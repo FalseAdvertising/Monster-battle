@@ -82,6 +82,8 @@ class BattleUI:
             'text': 'End Game'
         }
 
+        self.last_click = False  # Add click state tracking
+
     def setup_ability_rects(self, abilities):
         # Calculate starting position to center abilities
         ability_total_width = (len(abilities) * self.ability_size[0] + 
@@ -134,20 +136,20 @@ class BattleUI:
             })
 
     def handle_input(self, mouse_pos, mouse_click):
-        # Check end game button first
-        if self.end_button['rect'].collidepoint(mouse_pos):
-            self.end_button['hover'] = True
-            if mouse_click:
+        # Only register click on button release (prevents multiple triggers)
+        if not mouse_click and self.last_click:  # Click was just released
+            # Check end game button
+            if self.end_button['rect'].collidepoint(mouse_pos):
+                self.last_click = mouse_click
                 return 'end_game'
-        else:
-            self.end_button['hover'] = False
 
-        # Check ability buttons
-        for button in self.player_buttons:
-            button['hover'] = button['rect'].collidepoint(mouse_pos)
-            if button['hover'] and mouse_click:
-                return button['ability']
+            # Check ability buttons
+            for button in self.player_buttons:
+                if button['rect'].collidepoint(mouse_pos):
+                    self.last_click = mouse_click
+                    return button['ability']
         
+        self.last_click = mouse_click
         return None
 
     def update_health_display(self, player_health, enemy_health):

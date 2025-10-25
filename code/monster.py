@@ -36,10 +36,11 @@ class Monster(pygame.sprite.Sprite):
             print(f"Added fire abilities: {self.abilities}")
         elif self.element == 'water':
             self.abilities.append('shards')
-            self.abilities.append('spark')
+            self.abilities.append('splash')
             print(f"Added water abilities: {self.abilities}")
         elif self.element == 'plant':
-            self.abilities.extend(['spiral'])
+            self.abilities.extend('spiral')
+            self.abilities.append('earthquake')
             print(f"Added plant abilities: {self.abilities}")
             
     def load_images(self):

@@ -43,6 +43,34 @@ class BattleEngine:
 
     def calculate_damage(self, attacker, defender, ability_name):
         """Calculate damage based on ability and types"""
-        base_damage = ABILITIES_DATA[ability_name]['damage']
-        type_multiplier = ELEMENT_DATA[attacker.element][defender.element]
-        return base_damage * type_multiplier
+        try:
+            # Debug prints to verify data
+            print(f"Attacker: {attacker.name}, Defender: {defender.name}")
+            print(f"Ability: {ability_name}")
+            print(f"Attacker stats: {MONSTER_DATA[attacker.name]}")
+            
+            # Get base damage
+            base_damage = ABILITIES_DATA[ability_name]['damage']
+            
+            # Get type effectiveness
+            type_multiplier = ELEMENT_DATA[attacker.element][defender.element]
+            
+            # Get attack and defense stats
+            attack_stat = MONSTER_DATA[attacker.name]['attack']
+            defense_stat = MONSTER_DATA[defender.name]['defense']
+            
+            # Calculate damage with stat modifier
+            stat_multiplier = attack_stat / defense_stat
+            final_damage = base_damage * type_multiplier * stat_multiplier
+            
+            print(f"Damage calculation: {base_damage} * {type_multiplier} * ({attack_stat}/{defense_stat})")
+            
+            return final_damage
+
+        except KeyError as e:
+            print(f"Error accessing stats: {e}")
+            print(f"Available monster data: {list(MONSTER_DATA.keys())}")
+            return 10
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return 10
