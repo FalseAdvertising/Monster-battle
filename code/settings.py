@@ -7,11 +7,12 @@ WINDOW_WIDTH, WINDOW_HEIGHT = 1280,720
 COLORS = {
     'black': '#000000',
     'red': '#ee1a0f',
-    'gray': 'gray',
+    'gray': '#808080',  # Changed from 'gray' to hex code
     'white': '#ffffff',
     'dark_gray': '#404040',
     'light_gray': '#CCCCCC',
-    'dark_red': '#8B0000'
+    'dark_red': '#8B0000',
+    'green': '#00FF00',
 }
 
 MONSTER_DATA = {

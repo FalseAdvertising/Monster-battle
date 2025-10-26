@@ -12,33 +12,38 @@ class AIController:
         return random.choice(monster.abilities)
 
 class BattleEngine:
-    def __init__(self, player_monster, enemy_monster):
-        self.player_monster = player_monster
-        self.enemy_monster = enemy_monster
-        self.ai_controller = AIController()
+    def __init__(self, player1_monster, player2_monster):
+        self.player1_monster = player1_monster
+        self.player2_monster = player2_monster
+        self.player1_first = True  # Tracks who goes first
 
-    def run_turn(self, player_ability):
-        """Execute a turn using the selected player ability"""
-        # Player's turn
-        if player_ability:
-            damage = self.calculate_damage(self.player_monster, self.enemy_monster, player_ability)
-            self.enemy_monster.health -= damage
-            print(f"{self.player_monster.name} used {player_ability} for {damage:.1f} damage!")
+    def run_turn(self, player1_move, player2_move):
+        """Execute a turn with both players' moves"""
+        first_monster = self.player1_monster if self.player1_first else self.player2_monster
+        second_monster = self.player2_monster if self.player1_first else self.player1_monster
+        first_move = player1_move if self.player1_first else player2_move
+        second_move = player2_move if self.player1_first else player1_move
+
+        # First player's move
+        if first_move:
+            damage = self.calculate_damage(first_monster, second_monster, first_move)
+            second_monster.health -= damage
+            print(f"{first_monster.name} used {first_move} for {damage:.1f} damage!")
             
-            if self.enemy_monster.health <= 0:
-                print(f"{self.enemy_monster.name} fainted!")
-                return self.player_monster
+            if second_monster.health <= 0:
+                return first_monster
 
-        # Enemy's turn
-        enemy_ability = self.ai_controller.choose_move(self.enemy_monster)
-        damage = self.calculate_damage(self.enemy_monster, self.player_monster, enemy_ability)
-        self.player_monster.health -= damage
-        print(f"{self.enemy_monster.name} used {enemy_ability} for {damage:.1f} damage!")
+        # Second player's move
+        if second_move and second_monster.health > 0:
+            damage = self.calculate_damage(second_monster, first_monster, second_move)
+            first_monster.health -= damage
+            print(f"{second_monster.name} used {second_move} for {damage:.1f} damage!")
+            
+            if first_monster.health <= 0:
+                return second_monster
 
-        if self.player_monster.health <= 0:
-            print(f"{self.player_monster.name} fainted!")
-            return self.enemy_monster
-
+        # Alternate who goes first next turn
+        self.player1_first = not self.player1_first
         return None
 
     def calculate_damage(self, attacker, defender, ability_name):

@@ -65,17 +65,16 @@ class SelectionScreen:
         self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.clock = pygame.time.Clock()
         self.running = True
-        
-        # Create monster cards
+        self.current_player = 1
+        self.player1_choice = None
         self.cards = []
         self.setup_cards()
-        
+
     def setup_cards(self):
         # Get all monster names and randomly select 8
         all_monsters = list(MONSTER_DATA.keys())
         selected_monsters = random.sample(all_monsters, 8)
         
-        # Setup grid layout for the 8 selected monsters
         cards_per_row = 4
         x_spacing = WINDOW_WIDTH // (cards_per_row + 1)
         y_spacing = 300
@@ -85,33 +84,35 @@ class SelectionScreen:
             col = i % cards_per_row
             pos = (x_spacing * (col + 1) - 100, 150 + row * y_spacing)
             self.cards.append(MonsterCard(name, pos))
-            print(f"Added card for: {name}")  # Debug print
 
     def run(self):
         while self.running:
             self.display_surface.fill(COLORS['white'])
             
-            # Draw title
+            # Draw title indicating current player
             font = pygame.font.Font(None, 74)
-            text = font.render("Select Your Monster", True, COLORS['black'])
+            text = font.render(f"Player {self.current_player} Select Your Monster", True, COLORS['black'])
             text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, 50))
             self.display_surface.blit(text, text_rect)
             
-            # Handle events
             mouse_pos = pygame.mouse.get_pos()
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    return None
-                
-                # Check specifically for left mouse button (button 1)
+                    return None, None
+                    
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for card in self.cards:
                         if card.handle_hover(mouse_pos):
-                            # Choose random opponent
-                            opponents = [c.name for c in self.cards if c.name != card.name]
-                            ai_choice = random.choice(opponents)
-                            return (card.name, ai_choice)
+                            if self.current_player == 1:
+                                self.player1_choice = card.name
+                                self.current_player = 2
+                                # Remove selected monster from available choices
+                                self.cards = [c for c in self.cards if c.name != card.name]
+                                break
+                            else:
+                                # Return both players' choices
+                                return self.player1_choice, card.name
             
             # Draw cards and handle hover effects
             for card in self.cards:
@@ -121,4 +122,4 @@ class SelectionScreen:
             pygame.display.update()
             self.clock.tick(60)
 
-        return None
+        return None, None

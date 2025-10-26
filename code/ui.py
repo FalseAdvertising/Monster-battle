@@ -2,206 +2,228 @@ import pygame
 from settings import *
 
 class BattleUI:
-    def __init__(self, player_monster, enemy_monster):
-        # Load background and floors
+    def __init__(self, player1_monster, player2_monster):
+        # Add debug print to verify colors are loaded
+        print("Available colors:", list(COLORS.keys()))
+        
+        # Store colors as instance variables to ensure availability
+        self.colors = {
+            'white': COLORS['white'],
+            'black': COLORS['black'],
+            'gray': COLORS['gray'],
+            'light_gray': COLORS['light_gray'],
+            'dark_gray': COLORS['dark_gray'],
+            'green': COLORS['green']
+        }
+        
+        # Load background and floor
         try:
             self.background = pygame.image.load('images/other/bg.png').convert()
             self.floor = pygame.image.load('images/other/floor.png').convert_alpha()
             
-            # Get monster positions
-            player_pos = player_monster.rect.midbottom
-            enemy_pos = enemy_monster.rect.midbottom
-            
-            # Update player floor Y position (460 + 20 = 480)
-            self.player_floor_rect = self.floor.get_rect(midtop=(200, 480))  # Player floor
-            self.enemy_floor_rect = self.floor.get_rect(midtop=(1000, 210))  # Enemy floor
-            
+            # Floor positions
+            self.player1_floor_rect = self.floor.get_rect(midtop=(200, 480))
+            self.player2_floor_rect = self.floor.get_rect(midtop=(1000, 210))
         except Exception as e:
             print(f"Error loading UI assets: {e}")
             self.background = None
             self.floor = None
 
-        # Bottom rectangle setup (20% of screen height)
-        bottom_height = int(WINDOW_HEIGHT * 0.2)  # 200px in 1000px height
-        self.bottom_rect = pygame.Rect(
-            0,  # 0% from left
-            WINDOW_HEIGHT - bottom_height,  # 80% from top
-            WINDOW_WIDTH,  # 100% width
-            bottom_height  # 20% height
-        )
-        self.bottom_color = COLORS['gray']
+        # Adjust bottom rectangle height and monster position
+        bottom_height = 250  # Increased from 200
+        self.left_rect = pygame.Rect(0, WINDOW_HEIGHT - bottom_height, WINDOW_WIDTH // 2, bottom_height)
+        self.right_rect = pygame.Rect(WINDOW_WIDTH // 2, WINDOW_HEIGHT - bottom_height, WINDOW_WIDTH // 2, bottom_height)
 
-        # Split bottom rectangle into two halves
-        self.left_rect = pygame.Rect(
-            0,  # Left side
-            WINDOW_HEIGHT - bottom_height,
-            WINDOW_WIDTH // 2,  # Half width
-            bottom_height
-        )
+        # Draw dividing line
+        self.divider_points = [
+            (WINDOW_WIDTH // 2, WINDOW_HEIGHT - bottom_height),
+            (WINDOW_WIDTH // 2, WINDOW_HEIGHT)
+        ]
+
+        # Adjust monster positions
+        player1_monster.rect.centery = 400  # Moved up from 470
         
-        self.right_rect = pygame.Rect(
-            WINDOW_WIDTH // 2,  # Right side
-            WINDOW_HEIGHT - bottom_height,
-            WINDOW_WIDTH // 2,  # Half width
-            bottom_height
-        )
+        # Setup ability buttons for both players
+        self.player1_buttons = []
+        self.player2_buttons = []
+        self.setup_ability_buttons(player1_monster.abilities, player2_monster.abilities)
 
-        # Ability rectangles setup
-        self.ability_rects = []
-        self.ability_spacing = int(WINDOW_WIDTH * 0.02)  # 2% of screen width
-        self.ability_size = (
-            int(WINDOW_WIDTH * 0.15),  # 15% of screen width
-            int(bottom_height * 0.25)   # 25% of bottom rectangle height
-        )
-        self.setup_ability_rects(player_monster.abilities)
+        # Move selection tracking
+        self.player1_selection = None
+        self.player2_selection = None
+        self.last_click = False
 
-        # Ability buttons setup
-        self.player_buttons = []
-        self.enemy_buttons = []
-        self.setup_ability_grid(player_monster.abilities, enemy_monster.abilities)
+        # Font setup
+        self.font = pygame.font.Font(None, 36)
 
-        # Font setup - scale with screen height
-        self.font = pygame.font.Font(None, int(bottom_height * 0.15))  # 15% of bottom height
-
-        # Health variables
-        self.player_health = 100
-        self.enemy_health = 100
-
-        # Add end game button at top center
-        button_width = 200
-        button_height = 50
-        self.end_button = {
-            'rect': pygame.Rect(
-                (WINDOW_WIDTH - button_width) // 2,  # Center horizontally
-                20,  # 20px from top
-                button_width,
-                button_height
-            ),
-            'color': COLORS['red'],
-            'hover': False,
-            'text': 'End Game'
-        }
-
-        self.last_click = False  # Add click state tracking
-
-    def setup_ability_rects(self, abilities):
-        # Calculate starting position to center abilities
-        ability_total_width = (len(abilities) * self.ability_size[0] + 
-                             (len(abilities) - 1) * self.ability_spacing)
-        start_x = (WINDOW_WIDTH - ability_total_width) // 2
-
-        # Create rectangle for each ability - vertically centered in bottom rect
-        ability_y = self.bottom_rect.top + (self.bottom_rect.height - self.ability_size[1]) // 2
+        # Add health tracking
+        self.player1_health = player1_monster.health
+        self.player2_health = player2_monster.health
         
-        for i, ability in enumerate(abilities):
-            x = start_x + i * (self.ability_size[0] + self.ability_spacing)
-            rect = pygame.Rect(x, ability_y, *self.ability_size)
-            self.ability_rects.append((rect, ability))
+        # Store max health for health bar calculations
+        self.player1_max_health = player1_monster.health
+        self.player2_max_health = player2_monster.health
 
-    def setup_ability_grid(self, player_abilities, enemy_abilities):
-        # Calculate button dimensions for 2x2 grid
-        padding = 20  # Space between buttons
-        grid_width = (self.left_rect.width - (3 * padding)) // 2  # 2 columns
-        grid_height = (self.left_rect.height - (3 * padding)) // 2  # 2 rows
+    def setup_ability_buttons(self, player1_abilities, player2_abilities):
+        # Calculate button dimensions for 2x2 grid with more space
+        padding = 30  # Increased padding
+        grid_width = (self.left_rect.width - (3 * padding)) // 2
+        grid_height = (self.left_rect.height - (4 * padding)) // 2  # More vertical space
 
-        # Setup player ability buttons (left side)
-        for i, ability in enumerate(player_abilities[:4]):  # Limit to 4 abilities
+        # Setup player 1 buttons (left side)
+        for i, ability in enumerate(player1_abilities[:4]):
             row = i // 2
             col = i % 2
             x = self.left_rect.left + padding + (col * (grid_width + padding))
             y = self.left_rect.top + padding + (row * (grid_height + padding))
             
-            rect = pygame.Rect(x, y, grid_width, grid_height)
-            self.player_buttons.append({
-                'rect': rect,
+            self.player1_buttons.append({
+                'rect': pygame.Rect(x, y, grid_width, grid_height),
                 'ability': ability,
-                'color': COLORS['white'],
-                'hover': False
+                'color': self.colors['white'],
+                'hover': False,
+                'locked': False
             })
 
-        # Setup enemy ability buttons (right side)
-        for i, ability in enumerate(enemy_abilities[:4]):  # Limit to 4 abilities
+        # Setup player 2 buttons (right side)
+        for i, ability in enumerate(player2_abilities[:4]):
             row = i // 2
             col = i % 2
             x = self.right_rect.left + padding + (col * (grid_width + padding))
             y = self.right_rect.top + padding + (row * (grid_height + padding))
             
-            rect = pygame.Rect(x, y, grid_width, grid_height)
-            self.enemy_buttons.append({
-                'rect': rect,
+            self.player2_buttons.append({
+                'rect': pygame.Rect(x, y, grid_width, grid_height),
                 'ability': ability,
-                'color': COLORS['gray'],  # Different color for enemy abilities
+                'color': self.colors['white'],
                 'hover': False,
-                'enabled': False  # Enemy buttons are disabled
+                'locked': False
             })
 
     def handle_input(self, mouse_pos, mouse_click):
-        # Only register click on button release (prevents multiple triggers)
-        if not mouse_click and self.last_click:  # Click was just released
-            # Check end game button
-            if self.end_button['rect'].collidepoint(mouse_pos):
-                self.last_click = mouse_click
-                return 'end_game'
-
-            # Check ability buttons
-            for button in self.player_buttons:
+        """Handle mouse input for move selection with deselection capability"""
+        if not mouse_click and self.last_click:
+            # Check player 1 buttons
+            for button in self.player1_buttons:
                 if button['rect'].collidepoint(mouse_pos):
-                    self.last_click = mouse_click
-                    return button['ability']
-        
+                    if button['locked']:
+                        # Deselect if clicking already selected move
+                        button['locked'] = False
+                        self.player1_selection = None
+                        print("Player 1 deselected move")
+                    elif not self.player1_selection:
+                        # Select new move if none selected
+                        self.player1_selection = button['ability']
+                        button['locked'] = True
+                        print("Player 1 selected:", button['ability'])
+
+            # Check player 2 buttons
+            for button in self.player2_buttons:
+                if button['rect'].collidepoint(mouse_pos):
+                    if button['locked']:
+                        # Deselect if clicking already selected move
+                        button['locked'] = False
+                        self.player2_selection = None
+                        print("Player 2 deselected move")
+                    elif not self.player2_selection:
+                        # Select new move if none selected
+                        self.player2_selection = button['ability']
+                        button['locked'] = True
+                        print("Player 2 selected:", button['ability'])
+
+            # Return both moves only if both players have selected
+            if self.player1_selection and self.player2_selection:
+                moves = (self.player1_selection, self.player2_selection)
+                return moves
+
         self.last_click = mouse_click
         return None
 
-    def update_health_display(self, player_health, enemy_health):
-        """Update health display for both monsters"""
-        self.player_health = player_health
-        self.enemy_health = enemy_health
+    def update_health_display(self, player1_health, player2_health):
+        """Update the stored health values for display"""
+        self.player1_health = player1_health
+        self.player2_health = player2_health
 
+        
+    # Add to BattleUI class in ui.py
+    def reset_move_selections(self):
+        """Reset all move selections after a turn"""
+        self.player1_selection = None
+        self.player2_selection = None
+        for button in self.player1_buttons + self.player2_buttons:
+            button['locked'] = False
+            button['hover'] = False
+    
     def draw(self, surface):
         # Draw background
         if self.background:
             surface.blit(self.background, (0, 0))
         else:
             surface.fill(COLORS['white'])
-        
-        # Draw both floors
+
+        # Draw floors
         if self.floor:
-            surface.blit(self.floor, self.player_floor_rect)
-            surface.blit(self.floor, self.enemy_floor_rect)
+            surface.blit(self.floor, self.player1_floor_rect)
+            surface.blit(self.floor, self.player2_floor_rect)
 
-        # Draw bottom rectangle split
+        # Draw bottom rectangles
         pygame.draw.rect(surface, COLORS['gray'], self.left_rect)
-        pygame.draw.rect(surface, COLORS['dark_gray'], self.right_rect)
+        pygame.draw.rect(surface, COLORS['gray'], self.right_rect)
 
-        # Draw player ability buttons
-        for button in self.player_buttons:
-            color = COLORS['light_gray'] if button['hover'] else COLORS['white']
+        # Draw dividing line (dotted)
+        for y in range(self.divider_points[0][1], self.divider_points[1][1], 10):
+            start_pos = (self.divider_points[0][0], y)
+            end_pos = (self.divider_points[0][0], y + 5)
+            pygame.draw.line(surface, self.colors['black'], start_pos, end_pos, 2)
+
+        # Draw player labels
+        p1_text = self.font.render("Player 1" + (" (Locked)" if self.player1_selection else ""), True, COLORS['black'])
+        p2_text = self.font.render("Player 2" + (" (Locked)" if self.player2_selection else ""), True, COLORS['black'])
+        surface.blit(p1_text, (self.left_rect.centerx - p1_text.get_width()//2, self.left_rect.top + 10))
+        surface.blit(p2_text, (self.right_rect.centerx - p2_text.get_width()//2, self.right_rect.top + 10))
+
+        # Draw player 1 buttons
+        for button in self.player1_buttons:
+            color = (self.colors['green'] if button['locked'] 
+                    else (self.colors['light_gray'] if button['hover'] 
+                    else self.colors['white']))
             pygame.draw.rect(surface, color, button['rect'], border_radius=10)
-            
-            text = self.font.render(button['ability'], True, COLORS['black'])
+            text = self.font.render(button['ability'], True, self.colors['black'])
             text_rect = text.get_rect(center=button['rect'].center)
             surface.blit(text, text_rect)
 
-        # Draw enemy ability buttons (disabled)
-        for button in self.enemy_buttons:
-            pygame.draw.rect(surface, button['color'], button['rect'], border_radius=10)
-            
-            text = self.font.render(button['ability'], True, COLORS['dark_gray'])
+        # Draw player 2 buttons
+        for button in self.player2_buttons:
+            color = (self.colors['green'] if button['locked'] 
+                    else (self.colors['light_gray'] if button['hover'] 
+                    else self.colors['white']))
+            pygame.draw.rect(surface, color, button['rect'], border_radius=10)
+            text = self.font.render(button['ability'], True, self.colors['black'])
             text_rect = text.get_rect(center=button['rect'].center)
             surface.blit(text, text_rect)
 
         # Draw health bars
-        player_health_rect = pygame.Rect(50, 50, 200 * (self.player_health/100), 20)
-        enemy_health_rect = pygame.Rect(WINDOW_WIDTH-250, 50, 200 * (self.enemy_health/100), 20)
+        # Player 1 health bar
+        health_width = 200
+        health_height = 20
+        p1_health_rect = pygame.Rect(50, 50, health_width * (self.player1_health/self.player1_max_health), health_height)
+        p1_health_bg = pygame.Rect(50, 50, health_width, health_height)
         
-        pygame.draw.rect(surface, COLORS['red'], player_health_rect)
-        pygame.draw.rect(surface, COLORS['red'], enemy_health_rect)
+        # Player 2 health bar
+        p2_health_rect = pygame.Rect(WINDOW_WIDTH-250, 50, health_width * (self.player2_health/self.player2_max_health), health_height)
+        p2_health_bg = pygame.Rect(WINDOW_WIDTH-250, 50, health_width, health_height)
+        
+        # Draw health bar backgrounds
+        pygame.draw.rect(surface, self.colors['gray'], p1_health_bg)
+        pygame.draw.rect(surface, self.colors['gray'], p2_health_bg)
+        
+        # Draw actual health bars
+        pygame.draw.rect(surface, self.colors['green'], p1_health_rect)
+        pygame.draw.rect(surface, self.colors['green'], p2_health_rect)
 
-        # Draw end game button
-        color = COLORS['dark_red'] if self.end_button['hover'] else COLORS['red']
-        pygame.draw.rect(surface, color, self.end_button['rect'], border_radius=10)
+        # Draw health text
+        health_text1 = self.font.render(f"{int(self.player1_health)}/{self.player1_max_health}", True, self.colors['black'])
+        health_text2 = self.font.render(f"{int(self.player2_health)}/{self.player2_max_health}", True, self.colors['black'])
         
-        # Draw button text
-        text = self.font.render(self.end_button['text'], True, COLORS['white'])
-        text_rect = text.get_rect(center=self.end_button['rect'].center)
-        surface.blit(text, text_rect)
+        surface.blit(health_text1, (50, 75))
+        surface.blit(health_text2, (WINDOW_WIDTH-250, 75))
