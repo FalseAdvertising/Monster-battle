@@ -1,12 +1,12 @@
 import pygame
+import os
+import math
+import random
 from settings import *
 
 class BattleUI:
     def __init__(self, player1_monster, player2_monster):
-        # Add debug print to verify colors are loaded
-        print("Available colors:", list(COLORS.keys()))
-        
-        # Store colors as instance variables to ensure availability
+        # Theme colors map
         self.colors = {
             'white': COLORS['white'],
             'black': COLORS['black'],
@@ -15,18 +15,28 @@ class BattleUI:
             'dark_gray': COLORS['dark_gray'],
             'green': COLORS['green']
         }
-        
-        # Load background and floor
+
+        # Load battle background (prefer user-specified Battle-Ground.jpg)
+        bg_candidates = [
+            os.path.normpath(os.path.join('background', 'Battle-Ground.jpg')),
+            'images/other/bg.png'
+        ]
+        self.background = None
+        for p in bg_candidates:
+            try:
+                if os.path.exists(p):
+                    self.background = pygame.image.load(p).convert()
+                    self.background = pygame.transform.scale(self.background, (WINDOW_WIDTH, WINDOW_HEIGHT))
+                    break
+            except Exception:
+                continue
+
+        # Load floor image (optional)
         try:
-            self.background = pygame.image.load('images/other/bg.png').convert()
             self.floor = pygame.image.load('images/other/floor.png').convert_alpha()
-            
-            # Floor positions
             self.player1_floor_rect = self.floor.get_rect(midtop=(200, 480))
             self.player2_floor_rect = self.floor.get_rect(midtop=(1000, 210))
-        except Exception as e:
-            print(f"Error loading UI assets: {e}")
-            self.background = None
+        except Exception:
             self.floor = None
 
         # Adjust bottom rectangle height and monster position
@@ -40,8 +50,7 @@ class BattleUI:
             (WINDOW_WIDTH // 2, WINDOW_HEIGHT)
         ]
 
-        # Adjust monster positions
-        player1_monster.rect.centery = 400  # Moved up from 470
+    # Monster positions will be set by the Game after UI is initialized
         
         # Setup ability buttons for both players
         self.player1_buttons = []
@@ -53,8 +62,43 @@ class BattleUI:
         self.player2_selection = None
         self.last_click = False
 
-        # Font setup
-        self.font = pygame.font.Font(None, 36)
+        # Font setup - use Creepster if available
+        creepster_candidates = [
+            os.path.normpath(os.path.join('background', 'Creepster-Regular.ttf')),
+        ]
+        creepster_path = None
+        for p in creepster_candidates:
+            if os.path.exists(p):
+                creepster_path = p
+                break
+
+        if creepster_path:
+            self.name_font = pygame.font.Font(creepster_path, 36)
+            self.hp_font = pygame.font.Font(creepster_path, 20)
+            self.ability_font = pygame.font.Font(creepster_path, 26)
+        else:
+            self.name_font = pygame.font.SysFont(None, 36)
+            self.hp_font = pygame.font.SysFont(None, 20)
+            self.ability_font = pygame.font.SysFont(None, 26)
+
+        # Load wood texture for UI panels/buttons if present
+        try:
+            self.wood_texture = pygame.image.load('images/other/Wood_sign2.png').convert_alpha()
+        except Exception:
+            self.wood_texture = None
+
+        # Optional skull/pumpkin icon for HP bar ends
+        if os.path.exists('images/other/skull.png'):
+            try:
+                self.skull_icon = pygame.image.load('images/other/skull.png').convert_alpha()
+            except Exception:
+                self.skull_icon = None
+        else:
+            self.skull_icon = None
+
+        # Particles (embers / mist)
+        self.particles = []
+        self.mist = []
 
         # Add health tracking
         self.player1_health = player1_monster.health
@@ -70,7 +114,7 @@ class BattleUI:
         grid_width = (self.left_rect.width - (3 * padding)) // 2
         grid_height = (self.left_rect.height - (4 * padding)) // 2  # More vertical space
 
-        # Setup player 1 buttons (left side)
+    # Setup player 1 buttons (left side)
         for i, ability in enumerate(player1_abilities[:4]):
             row = i // 2
             col = i % 2
@@ -85,7 +129,7 @@ class BattleUI:
                 'locked': False
             })
 
-        # Setup player 2 buttons (right side)
+    # Setup player 2 buttons (right side)
         for i, ability in enumerate(player2_abilities[:4]):
             row = i // 2
             col = i % 2
@@ -155,10 +199,42 @@ class BattleUI:
             button['locked'] = False
             button['hover'] = False
     
-    def draw(self, surface):
-        # Draw bottom rectangles
-        pygame.draw.rect(surface, COLORS['gray'], self.left_rect)
-        pygame.draw.rect(surface, COLORS['gray'], self.right_rect)
+    def draw_panels(self, surface):
+        """Draw background UI panels behind monsters (wood panels, particles)."""
+        # Draw subtle particles (embers/mist)
+        # Spawn ember occasionally
+        if random.random() < 0.02:
+            self.particles.append({
+                'x': random.randint(0, WINDOW_WIDTH),
+                'y': random.randint(0, WINDOW_HEIGHT//2),
+                'r': random.randint(2, 5),
+                'vy': random.uniform(0.1, 0.6),
+                'alpha': 255
+            })
+        # Update and draw embers
+        for p in list(self.particles):
+            p['y'] += p['vy']
+            p['alpha'] -= 1.2
+            if p['alpha'] <= 0 or p['y'] > WINDOW_HEIGHT:
+                self.particles.remove(p)
+                continue
+            s = pygame.Surface((p['r']*2, p['r']*2), pygame.SRCALPHA)
+            s.fill((0,0,0,0))
+            pygame.draw.circle(s, (255, 140, 20, int(p['alpha'])), (p['r'], p['r']), p['r'])
+            surface.blit(s, (p['x']-p['r'], p['y']-p['r']))
+
+        # Draw bottom rectangles (UI panels) - use wood texture if available
+        if self.wood_texture:
+            left_bg = pygame.transform.smoothscale(self.wood_texture, (self.left_rect.width, self.left_rect.height))
+            right_bg = pygame.transform.smoothscale(self.wood_texture, (self.right_rect.width, self.right_rect.height))
+            surface.blit(left_bg, self.left_rect.topleft)
+            surface.blit(right_bg, self.right_rect.topleft)
+            # subtle frame
+            pygame.draw.rect(surface, (30,20,10), self.left_rect, 6, border_radius=8)
+            pygame.draw.rect(surface, (30,20,10), self.right_rect, 6, border_radius=8)
+        else:
+            pygame.draw.rect(surface, COLORS['gray'], self.left_rect)
+            pygame.draw.rect(surface, COLORS['gray'], self.right_rect)
 
         # Draw dividing line (dotted)
         for y in range(self.divider_points[0][1], self.divider_points[1][1], 10):
@@ -166,54 +242,116 @@ class BattleUI:
             end_pos = (self.divider_points[0][0], y + 5)
             pygame.draw.line(surface, self.colors['black'], start_pos, end_pos, 2)
 
-        # Draw player labels
-        p1_text = self.font.render("Player 1" + (" (Locked)" if self.player1_selection else ""), True, COLORS['black'])
-        p2_text = self.font.render("Player 2" + (" (Locked)" if self.player2_selection else ""), True, COLORS['black'])
-        surface.blit(p1_text, (self.left_rect.centerx - p1_text.get_width()//2, self.left_rect.top + 10))
-        surface.blit(p2_text, (self.right_rect.centerx - p2_text.get_width()//2, self.right_rect.top + 10))
+    def draw_overlay(self, surface):
+        """Draw foreground UI (labels, buttons, health bars) on top of monsters."""
+        # Draw player labels (use themed font with outline) - positioned at bottom of panels
+        p1_label = "Player 1" + (" (Locked)" if self.player1_selection else "")
+        p2_label = "Player 2" + (" (Locked)" if self.player2_selection else "")
+        # outline / shadow
+        p1_shadow = self.name_font.render(p1_label, True, (0,0,0))
+        p2_shadow = self.name_font.render(p2_label, True, (0,0,0))
+        surface.blit(p1_shadow, (self.left_rect.centerx - p1_shadow.get_width()//2 + 2, self.left_rect.bottom - 38))
+        surface.blit(p2_shadow, (self.right_rect.centerx - p2_shadow.get_width()//2 + 2, self.right_rect.bottom - 38))
+        p1_text = self.name_font.render(p1_label, True, (255,180,80))
+        p2_text = self.name_font.render(p2_label, True, (255,180,80))
+        surface.blit(p1_text, (self.left_rect.centerx - p1_text.get_width()//2, self.left_rect.bottom - 40))
+        surface.blit(p2_text, (self.right_rect.centerx - p2_text.get_width()//2, self.right_rect.bottom - 40))
 
         # Draw player 1 buttons
         for button in self.player1_buttons:
-            color = (self.colors['green'] if button['locked'] 
-                    else (self.colors['light_gray'] if button['hover'] 
-                    else self.colors['white']))
-            pygame.draw.rect(surface, color, button['rect'], border_radius=10)
-            text = self.font.render(button['ability'], True, self.colors['black'])
-            text_rect = text.get_rect(center=button['rect'].center)
-            surface.blit(text, text_rect)
+            rect = button['rect']
+            if self.wood_texture:
+                btn_bg = pygame.transform.smoothscale(self.wood_texture, (rect.width, rect.height))
+                surface.blit(btn_bg, rect.topleft)
+            else:
+                pygame.draw.rect(surface, self.colors['white'], rect, border_radius=10)
+            # glow if hover/locked
+            if button['locked']:
+                pygame.draw.rect(surface, (255,120,20), rect, 4, border_radius=10)
+            elif button['hover']:
+                pygame.draw.rect(surface, (180,0,255), rect, 3, border_radius=10)
+            # ability text
+            text_shadow = self.ability_font.render(button['ability'], True, (0,0,0))
+            surface.blit(text_shadow, (rect.centerx - text_shadow.get_width()//2 + 1, rect.centery - text_shadow.get_height()//2 + 1))
+            text = self.ability_font.render(button['ability'], True, (250,240,200))
+            surface.blit(text, (rect.centerx - text.get_width()//2, rect.centery - text.get_height()//2))
 
         # Draw player 2 buttons
         for button in self.player2_buttons:
-            color = (self.colors['green'] if button['locked'] 
-                    else (self.colors['light_gray'] if button['hover'] 
-                    else self.colors['white']))
-            pygame.draw.rect(surface, color, button['rect'], border_radius=10)
-            text = self.font.render(button['ability'], True, self.colors['black'])
-            text_rect = text.get_rect(center=button['rect'].center)
-            surface.blit(text, text_rect)
+            rect = button['rect']
+            if self.wood_texture:
+                btn_bg = pygame.transform.smoothscale(self.wood_texture, (rect.width, rect.height))
+                surface.blit(btn_bg, rect.topleft)
+            else:
+                pygame.draw.rect(surface, self.colors['white'], rect, border_radius=10)
+            if button['locked']:
+                pygame.draw.rect(surface, (255,120,20), rect, 4, border_radius=10)
+            elif button['hover']:
+                pygame.draw.rect(surface, (180,0,255), rect, 3, border_radius=10)
+            text_shadow = self.ability_font.render(button['ability'], True, (0,0,0))
+            surface.blit(text_shadow, (rect.centerx - text_shadow.get_width()//2 + 1, rect.centery - text_shadow.get_height()//2 + 1))
+            text = self.ability_font.render(button['ability'], True, (250,240,200))
+            surface.blit(text, (rect.centerx - text.get_width()//2, rect.centery - text.get_height()//2))
 
-        # Draw health bars
-        # Player 1 health bar
+        # Draw health bars (themed pumpkin/blood style)
         health_width = 200
-        health_height = 20
-        p1_health_rect = pygame.Rect(50, 50, health_width * (self.player1_health/self.player1_max_health), health_height)
-        p1_health_bg = pygame.Rect(50, 50, health_width, health_height)
-        
-        # Player 2 health bar
-        p2_health_rect = pygame.Rect(WINDOW_WIDTH-250, 50, health_width * (self.player2_health/self.player2_max_health), health_height)
-        p2_health_bg = pygame.Rect(WINDOW_WIDTH-250, 50, health_width, health_height)
-        
-        # Draw health bar backgrounds
-        pygame.draw.rect(surface, self.colors['gray'], p1_health_bg)
-        pygame.draw.rect(surface, self.colors['gray'], p2_health_bg)
-        
-        # Draw actual health bars
-        pygame.draw.rect(surface, self.colors['green'], p1_health_rect)
-        pygame.draw.rect(surface, self.colors['green'], p2_health_rect)
+        health_height = 22
+        # Player 1
+        p1_x = 50
+        p1_y = 50
+        p1_bg = pygame.Rect(p1_x, p1_y, health_width, health_height)
+        p1_fill_w = int(health_width * (self.player1_health / max(1, self.player1_max_health)))
+        p1_fill = pygame.Rect(p1_x, p1_y, p1_fill_w, health_height)
+        # Player 2
+        p2_x = WINDOW_WIDTH - 250
+        p2_y = 50
+        p2_bg = pygame.Rect(p2_x, p2_y, health_width, health_height)
+        p2_fill_w = int(health_width * (self.player2_health / max(1, self.player2_max_health)))
+        p2_fill = pygame.Rect(p2_x, p2_y, p2_fill_w, health_height)
 
-        # Draw health text
-        health_text1 = self.font.render(f"{int(self.player1_health)}/{self.player1_max_health}", True, self.colors['black'])
-        health_text2 = self.font.render(f"{int(self.player2_health)}/{self.player2_max_health}", True, self.colors['black'])
-        
-        surface.blit(health_text1, (50, 75))
-        surface.blit(health_text2, (WINDOW_WIDTH-250, 75))
+        # Backgrounds
+        pygame.draw.rect(surface, (40, 30, 30), p1_bg, border_radius=6)
+        pygame.draw.rect(surface, (40, 30, 30), p2_bg, border_radius=6)
+
+        # Fill colors (pumpkin orange); if low HP use blood red
+        def fill_color(health, max_h):
+            ratio = health / max(1, max_h)
+            if ratio < 0.25:
+                return (180, 30, 30)
+            return (255, 140, 0)
+
+        pygame.draw.rect(surface, fill_color(self.player1_health, self.player1_max_health), p1_fill, border_radius=6)
+        pygame.draw.rect(surface, fill_color(self.player2_health, self.player2_max_health), p2_fill, border_radius=6)
+
+        # Simple dripping effect along the filled part
+        def draw_drips(fill_rect):
+            if fill_rect.width <= 0:
+                return
+            drip_surf = pygame.Surface((fill_rect.width, 12), pygame.SRCALPHA)
+            for i in range(0, fill_rect.width, 20):
+                w = random.randint(6, 12)
+                h = random.randint(4, 10)
+                pygame.draw.ellipse(drip_surf, (255,120,20,180), (i, 6, w, h))
+            surface.blit(drip_surf, (fill_rect.x, fill_rect.bottom - 6))
+
+        draw_drips(p1_fill)
+        draw_drips(p2_fill)
+
+        # Draw skull/pumpkin icon at the end of the bar if available
+        if self.skull_icon:
+            icon_h = health_height + 6
+            icon = pygame.transform.smoothscale(self.skull_icon, (icon_h, icon_h))
+            surface.blit(icon, (p1_bg.right + 8, p1_bg.top - 3))
+            surface.blit(icon, (p2_bg.right + 8, p2_bg.top - 3))
+
+        # Draw HP text with outline for readability
+        hp1_label = f"{int(self.player1_health)}/{self.player1_max_health}"
+        hp2_label = f"{int(self.player2_health)}/{self.player2_max_health}"
+        shadow1 = self.hp_font.render(hp1_label, True, (0,0,0))
+        shadow2 = self.hp_font.render(hp2_label, True, (0,0,0))
+        surface.blit(shadow1, (p1_x + 2, p1_y + health_height + 6))
+        surface.blit(shadow2, (p2_x + 2, p2_y + health_height + 6))
+        hp1_text = self.hp_font.render(hp1_label, True, (255,255,255))
+        hp2_text = self.hp_font.render(hp2_label, True, (255,255,255))
+        surface.blit(hp1_text, (p1_x, p1_y + health_height + 4))
+        surface.blit(hp2_text, (p2_x, p2_y + health_height + 4))
