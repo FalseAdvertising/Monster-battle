@@ -39,7 +39,7 @@ class Monster(pygame.sprite.Sprite):
             self.abilities.append('splash')
             print(f"Added water abilities: {self.abilities}")
         elif self.element == 'plant':
-            self.abilities.extend('spiral')
+            self.abilities.append('spiral')
             self.abilities.append('earthquake')
             print(f"Added plant abilities: {self.abilities}")
             
