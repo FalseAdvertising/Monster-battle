@@ -28,6 +28,8 @@ class Game:
         pygame.display.set_caption('Monster Battle')
         self.clock = pygame.time.Clock()
         self.running = True
+        self.battle_ended = False
+        self.winner_name = None
 
         # Load background and floor
         try:
@@ -62,6 +64,10 @@ class Game:
             self.running = False
 
     def handle_input(self):
+        # Don't allow input if battle has ended
+        if self.battle_ended:
+            return
+            
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = pygame.mouse.get_pressed()[0]
 
@@ -87,6 +93,8 @@ class Game:
             self.battle_ui.reset_move_selections()
             
             if winner:
+                self.battle_ended = True
+                self.winner_name = winner.name
                 player_num = "1" if winner == self.player1_monster else "2"
                 print(f"Battle ended! Player {player_num} wins!")
 
@@ -94,13 +102,51 @@ class Game:
         self.all_sprites.update()
 
     def draw(self):
-        # Draw UI (includes background, floors, and UI elements)
-        self.battle_ui.draw(self.display_surface)
+        # Draw background first
+        if self.battle_ui.background:
+            self.display_surface.blit(self.battle_ui.background, (0, 0))
+        else:
+            self.display_surface.fill(COLORS['white'])
+
+        # Draw floors
+        if self.battle_ui.floor:
+            self.display_surface.blit(self.battle_ui.floor, self.battle_ui.player1_floor_rect)
+            self.display_surface.blit(self.battle_ui.floor, self.battle_ui.player2_floor_rect)
         
-        # Draw sprites
+        # Draw monsters BEFORE UI rectangles
         self.all_sprites.draw(self.display_surface)
         
+        # Draw UI elements (rectangles, buttons, health bars)
+        self.battle_ui.draw(self.display_surface)
+        
+        # Draw victory message if battle ended
+        if self.battle_ended:
+            self.draw_victory_message()
+        
         pygame.display.update()
+
+    def draw_victory_message(self):
+        """Draw victory message in center of screen"""
+        # Create semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.display_surface.blit(overlay, (0, 0))
+        
+        # Determine winner
+        player_num = "1" if self.winner_name == self.player1_monster.name else "2"
+        
+        # Draw victory text
+        font = pygame.font.Font(None, 100)
+        victory_text = font.render(f"Player {player_num} Wins!", True, (255, 255, 255))
+        text_rect = victory_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
+        self.display_surface.blit(victory_text, text_rect)
+        
+        # Draw monster name
+        font_small = pygame.font.Font(None, 60)
+        monster_text = font_small.render(f"{self.winner_name} is victorious!", True, (255, 215, 0))
+        monster_rect = monster_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 30))
+        self.display_surface.blit(monster_text, monster_rect)
 
     def run(self):
         while self.running:

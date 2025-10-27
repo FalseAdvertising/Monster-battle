@@ -141,8 +141,9 @@ class BattleUI:
 
     def update_health_display(self, player1_health, player2_health):
         """Update the stored health values for display"""
-        self.player1_health = player1_health
-        self.player2_health = player2_health
+        # Clamp health to minimum of 0
+        self.player1_health = max(0, player1_health)
+        self.player2_health = max(0, player2_health)
 
         
     # Add to BattleUI class in ui.py
@@ -155,17 +156,6 @@ class BattleUI:
             button['hover'] = False
     
     def draw(self, surface):
-        # Draw background
-        if self.background:
-            surface.blit(self.background, (0, 0))
-        else:
-            surface.fill(COLORS['white'])
-
-        # Draw floors
-        if self.floor:
-            surface.blit(self.floor, self.player1_floor_rect)
-            surface.blit(self.floor, self.player2_floor_rect)
-
         # Draw bottom rectangles
         pygame.draw.rect(surface, COLORS['gray'], self.left_rect)
         pygame.draw.rect(surface, COLORS['gray'], self.right_rect)
