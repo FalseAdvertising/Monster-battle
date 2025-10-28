@@ -148,11 +148,11 @@ class Game:
             self.monster_group.add(self.player1_monster, self.player2_monster)
             self.all_sprites.add(self.monster_group)
 
-            # Create battle engine with both players
-            self.battle_engine = BattleEngine(self.player1_monster, self.player2_monster)
-
-            # Create UI with both players
+            # Create UI with both players first
             self.battle_ui = BattleUI(self.player1_monster, self.player2_monster)
+            
+            # Create battle engine with both players and UI reference
+            self.battle_engine = BattleEngine(self.player1_monster, self.player2_monster, self.battle_ui)
             # Position monsters relative to UI floor if available so they sit on the platforms
             try:
                 # Dynamic scaling and positioning for monsters
@@ -238,14 +238,16 @@ class Game:
                 print(f"Battle ended! Player {player_num} wins!")
 
     def update(self):
+        # Update all sprites
         self.all_sprites.update()
+        
+        # Update animations
+        dt = self.clock.get_time() / 1000.0  # Convert to seconds
+        self.battle_ui.update_animations(dt)
 
     def draw(self):
-        # Draw background first
-        if self.battle_ui.background:
-            self.display_surface.blit(self.battle_ui.background, (0, 0))
-        else:
-            self.display_surface.fill(COLORS['white'])
+        # Draw everything through the battle UI
+        self.battle_ui.draw(self.display_surface, self.player1_monster, self.player2_monster)
 
         # Draw floors first (so panels can align correctly)
         if self.battle_ui.floor:

@@ -49,18 +49,44 @@ class BattleUI:
             (WINDOW_WIDTH // 2, WINDOW_HEIGHT - bottom_height),
             (WINDOW_WIDTH // 2, WINDOW_HEIGHT)
         ]
-
-    # Monster positions will be set by the Game after UI is initialized
+        
+        # Animation state
+        self.animation_timer = 0
+        self.is_animating = False
+        self.show_move_bar = True
+        
+        # Monster animation properties
+        self.bob_time = 0
+        self.bob_speed = 2
+        self.bob_amplitude = 10
+        self.monster1_offset_y = 0
+        self.monster2_offset_y = 0
+        
+        # Hit animation properties
+        self.monster1_hit_offset = 0
+        self.monster2_hit_offset = 0
+        self.hit_return_speed = 0.2
+        self.max_hit_offset = 30
+        
+        # Load attack effects
+        self.attack_sprites = {}
+        self.attack_sounds = {}
+        self.load_attack_effects()
         
         # Setup ability buttons for both players
         self.player1_buttons = []
         self.player2_buttons = []
-        self.setup_ability_buttons(player1_monster.abilities, player2_monster.abilities)
-
+        
         # Move selection tracking
         self.player1_selection = None
         self.player2_selection = None
         self.last_click = False
+
+        # Health tracking
+        self.player1_health = player1_monster.health
+        self.player2_health = player2_monster.health
+        self.player1_max_health = player1_monster.health
+        self.player2_max_health = player2_monster.health
 
         # Font setup - use Creepster if available
         creepster_candidates = [
@@ -99,14 +125,142 @@ class BattleUI:
         # Particles (embers / mist)
         self.particles = []
         self.mist = []
-
-        # Add health tracking
-        self.player1_health = player1_monster.health
-        self.player2_health = player2_monster.health
         
-        # Store max health for health bar calculations
-        self.player1_max_health = player1_monster.health
-        self.player2_max_health = player2_monster.health
+        # Setup the ability buttons last (after loading fonts and textures)
+        self.setup_ability_buttons(player1_monster.abilities, player2_monster.abilities)
+        
+        # Monster animation properties
+        self.bob_time = 0
+        self.bob_speed = 2
+        self.bob_amplitude = 10
+        self.monster1_offset_y = 0
+        self.monster2_offset_y = 0
+        
+        # Hit animation properties
+        self.monster1_hit_offset = 0
+        self.monster2_hit_offset = 0
+        self.hit_return_speed = 0.2
+        self.max_hit_offset = 30
+        
+        # Load attack effects
+        self.attack_sprites = {}
+        self.attack_sounds = {}
+        self.load_attack_effects()
+
+        # Load battle background (prefer user-specified Battle-Ground.jpg)
+        bg_candidates = [
+            os.path.normpath(os.path.join('background', 'Battle-Ground.jpg')),
+            'images/other/bg.png'
+        ]
+        self.background = None
+        for p in bg_candidates:
+            try:
+                if os.path.exists(p):
+                    self.background = pygame.image.load(p).convert()
+                    self.background = pygame.transform.scale(self.background, (WINDOW_WIDTH, WINDOW_HEIGHT))
+                    break
+            except Exception:
+                continue
+
+        # Load floor image (optional)
+        try:
+            self.floor = pygame.image.load('images/other/floor.png').convert_alpha()
+            self.player1_floor_rect = self.floor.get_rect(midtop=(200, 480))
+            self.player2_floor_rect = self.floor.get_rect(midtop=(1000, 210))
+        except Exception:
+            self.floor = None
+
+        # Adjust bottom rectangle height and monster position
+        bottom_height = 250  # Increased from 200
+        self.left_rect = pygame.Rect(0, WINDOW_HEIGHT - bottom_height, WINDOW_WIDTH // 2, bottom_height)
+        self.right_rect = pygame.Rect(WINDOW_WIDTH // 2, WINDOW_HEIGHT - bottom_height, WINDOW_WIDTH // 2, bottom_height)
+
+        # Draw dividing line
+        self.divider_points = [
+            (WINDOW_WIDTH // 2, WINDOW_HEIGHT - bottom_height),
+            (WINDOW_WIDTH // 2, WINDOW_HEIGHT)
+        ]
+        
+    def load_attack_effects(self):
+        """Load all attack images and sounds"""
+        # Load attack sprites
+        attack_types = ['fire', 'ice', 'scratch', 'explosion', 'green', 'splash']
+        for attack in attack_types:
+            try:
+                img_path = os.path.join('images', 'attacks', f'{attack}.png')
+                self.attack_sprites[attack] = pygame.image.load(img_path).convert_alpha()
+            except Exception as e:
+                print(f"Failed to load attack sprite {attack}: {e}")
+        
+        # Load attack sounds
+        for attack in attack_types:
+            try:
+                sound_path = os.path.join('audio', f'{attack}.wav')
+                if not os.path.exists(sound_path):
+                    sound_path = os.path.join('audio', f'{attack}.mp3')
+                self.attack_sounds[attack] = pygame.mixer.Sound(sound_path)
+            except Exception as e:
+                print(f"Failed to load attack sound {attack}: {e}")
+                
+    def update_animations(self, dt):
+        """Update all animation states"""
+        # Update bobbing animation
+        self.bob_time += dt * self.bob_speed
+        self.monster1_offset_y = math.sin(self.bob_time) * self.bob_amplitude
+        self.monster2_offset_y = math.sin(self.bob_time + math.pi) * self.bob_amplitude
+        
+        # Update hit reactions
+        if self.monster1_hit_offset > 0:
+            self.monster1_hit_offset *= (1 - self.hit_return_speed)
+        if self.monster2_hit_offset > 0:
+            self.monster2_hit_offset *= (1 - self.hit_return_speed)
+            
+        # Update attack animation timer
+        if self.is_animating:
+            self.animation_timer += dt
+            if self.animation_timer >= 1.0:
+                self.is_animating = False
+                self.show_move_bar = True
+                self.animation_timer = 0
+                
+    def play_attack_animation(self, attacker_is_player1, move_name):
+        """Start an attack animation sequence"""
+        # Determine animation type based on move name
+        anim_type = self.get_animation_type(move_name)
+        if anim_type in self.attack_sprites:
+            # Play sound effect - REMOVED for attack sounds only
+            # if anim_type in self.attack_sounds:
+            #     self.attack_sounds[anim_type].play()
+
+            # Set animation state
+            self.is_animating = True
+            self.show_move_bar = False
+            self.animation_timer = 0
+
+            # Apply hit reaction to target
+            if attacker_is_player1:
+                self.monster2_hit_offset = self.max_hit_offset
+            else:
+                self.monster1_hit_offset = self.max_hit_offset
+                
+    def get_animation_type(self, move_name):
+        """Map move names to animation types"""
+        move_name = move_name.lower()
+        if 'fire' in move_name:
+            return 'fire'
+        elif 'ice' in move_name or 'freeze' in move_name:
+            return 'ice'
+        elif 'scratch' in move_name or 'claw' in move_name:
+            return 'scratch'
+        elif 'explosion' in move_name or 'blast' in move_name:
+            return 'explosion'
+        elif 'leaf' in move_name or 'grass' in move_name:
+            return 'green'
+        elif 'water' in move_name or 'splash' in move_name:
+            return 'splash'
+        return 'scratch'  # default animation
+
+
 
     def setup_ability_buttons(self, player1_abilities, player2_abilities):
         # Calculate button dimensions for 2x2 grid with more space
@@ -199,6 +353,42 @@ class BattleUI:
             button['locked'] = False
             button['hover'] = False
     
+    def draw(self, surface, player1_monster, player2_monster):
+        """Draw the complete battle UI with animations"""
+        # Draw background
+        if self.background:
+            surface.blit(self.background, (0, 0))
+        else:
+            surface.fill(self.colors['white'])
+
+        # Draw floor images if available
+        if self.floor:
+            surface.blit(self.floor, self.player1_floor_rect)
+            surface.blit(self.floor, self.player2_floor_rect)
+
+        # Apply animation offsets to monster positions
+        monster1_rect = player1_monster.rect.copy()
+        monster2_rect = player2_monster.rect.copy()
+        
+        # Apply bobbing animation
+        monster1_rect.y += self.monster1_offset_y
+        monster2_rect.y += self.monster2_offset_y
+        
+        # Apply hit reactions
+        monster1_rect.x -= self.monster1_hit_offset
+        monster2_rect.x += self.monster2_hit_offset
+        
+        # Draw monsters with current positions
+        surface.blit(player1_monster.image, monster1_rect)
+        surface.blit(player2_monster.image, monster2_rect)
+
+        # Draw UI panels and particles
+        self.draw_panels(surface)
+
+        # Only draw the move selection UI if not animating
+        if self.show_move_bar:
+            self.draw_overlay(surface)
+
     def draw_panels(self, surface):
         """Draw background UI panels behind monsters (wood panels, particles)."""
         # Draw subtle particles (embers/mist)
