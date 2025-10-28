@@ -203,8 +203,8 @@ class Game:
             self.running = False
 
     def handle_input(self):
-        # Don't allow input if battle has ended
-        if self.battle_ended:
+        # Don't allow input if battle has ended or animating
+        if self.battle_ended or self.battle_engine.animating:
             return
 
         mouse_pos = pygame.mouse.get_pos()
@@ -219,23 +219,11 @@ class Game:
             print(f"Player 1 selected: {player1_move}")
             print(f"Player 2 selected: {player2_move}")
 
-            # Execute the turn immediately
-            winner = self.battle_engine.run_turn(player1_move, player2_move)
-
-            # Update health display
-            self.battle_ui.update_health_display(
-                self.player1_monster.health,
-                self.player2_monster.health
-            )
+            # Start turn with animations
+            self.battle_engine.run_turn(player1_move, player2_move)
 
             # Reset move selections for next turn
             self.battle_ui.reset_move_selections()
-
-            if winner:
-                self.battle_ended = True
-                self.winner_name = winner.name
-                player_num = "1" if winner == self.player1_monster else "2"
-                print(f"Battle ended! Player {player_num} wins!")
 
     def update(self):
         # Update all sprites
@@ -244,6 +232,14 @@ class Game:
         # Update animations
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
         self.battle_ui.update_animations(dt)
+        
+        # Update battle engine animations and check for winner
+        winner = self.battle_engine.update_animations(dt)
+        if winner and not self.battle_ended:
+            self.battle_ended = True
+            self.winner_name = winner.name
+            player_num = "1" if winner == self.player1_monster else "2"
+            print(f"Battle ended! Player {player_num} wins!")
 
     def draw(self):
         # Draw everything through the battle UI
@@ -257,11 +253,24 @@ class Game:
         # Draw UI panels behind monsters
         self.battle_ui.draw_panels(self.display_surface)
 
-        # Draw monsters
-        self.all_sprites.draw(self.display_surface)
+        # Draw monsters with flash effects
+        for monster in [self.player1_monster, self.player2_monster]:
+            should_flash = self.battle_engine.get_monster_flash_state(monster)
+            if should_flash:
+                # Create red flash overlay
+                flash_surface = pygame.Surface(monster.image.get_size(), pygame.SRCALPHA)
+                flash_surface.fill((255, 0, 0, 80))  # Light red with low opacity
+                temp_monster_surface = monster.image.copy()
+                temp_monster_surface.blit(flash_surface, (0, 0), special_flags=pygame.BLEND_ADD)
+                self.display_surface.blit(temp_monster_surface, monster.rect)
+            else:
+                self.display_surface.blit(monster.image, monster.rect)
 
         # Draw UI overlays (buttons, health bars) on top of monsters
         self.battle_ui.draw_overlay(self.display_surface)
+        
+        # Draw attack animations on top of everything
+        self.battle_engine.draw_animations(self.display_surface)
         
         # Draw victory message if battle ended
         if self.battle_ended:

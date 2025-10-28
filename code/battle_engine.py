@@ -1,5 +1,7 @@
 import random
+import pygame
 from settings import *
+from animation import AttackAnimation, DamageFlash
 
 class Move:
     def __init__(self, name, damage, element):
@@ -15,109 +17,131 @@ class BattleEngine:
     def __init__(self, player1_monster, player2_monster, battle_ui):
         self.player1_monster = player1_monster
         self.player2_monster = player2_monster
-        self.player1_first = True  # Tracks who goes first
-        self.ui = battle_ui
-        # Track move confirmations and selected moves
-        self.player1_confirmed = False
-        self.player2_confirmed = False
-        self.player1_selected_move = None
-        self.player2_selected_move = None
-
-    def confirm_move(self, player_number, move):
-        """Confirm a move for a specific player"""
-        if player_number == 1:
-            self.player1_selected_move = move
-            self.player1_confirmed = True
-        else:
-            self.player2_selected_move = move
-            self.player2_confirmed = True
+        self.battle_ui = battle_ui
+        self.turn_number = 1
         
-    def are_moves_confirmed(self):
-        """Check if both players have confirmed their moves"""
-        return self.player1_confirmed and self.player2_confirmed
-    
-    def reset_confirmations(self):
-        """Reset confirmation status for a new turn"""
-        self.player1_confirmed = False
-        self.player2_confirmed = False
-        self.player1_selected_move = None
-        self.player2_selected_move = None
+        # Animation systems
+        self.attack_animation = AttackAnimation()
+        self.player1_flash = DamageFlash()
+        self.player2_flash = DamageFlash()
+        
+        # Animation state
+        self.animating = False
+        self.animation_queue = []
 
-    def run_turn(self, player1_move=None, player2_move=None):
-        """Execute a turn with both players' moves"""
-        if player1_move is not None:
-            self.confirm_move(1, player1_move)
-        if player2_move is not None:
-            self.confirm_move(2, player2_move)
-            
-        # Only proceed if both players have confirmed their moves
-        if not self.are_moves_confirmed():
-            return None
-            
-        first_monster = self.player1_monster if self.player1_first else self.player2_monster
-        second_monster = self.player2_monster if self.player1_first else self.player1_monster
-        first_move = self.player1_selected_move if self.player1_first else self.player2_selected_move
-        second_move = self.player2_selected_move if self.player1_first else self.player1_selected_move
+    def run_turn(self, player1_move, player2_move):
+        """Execute a turn with animations"""
+        print(f"\n--- Turn {self.turn_number} ---")
+        
+        # Determine turn order (alternates each turn)
+        if self.turn_number % 2 == 1:  # Odd turns: Player 1 goes first
+            first_attacker, first_move = self.player1_monster, player1_move
+            second_attacker, second_move = self.player2_monster, player2_move
+        else:  # Even turns: Player 2 goes first
+            first_attacker, first_move = self.player2_monster, player2_move
+            second_attacker, second_move = self.player1_monster, player1_move
 
-        # First player's move
-        if first_move:
-            damage = self.calculate_damage(first_monster, second_monster, first_move)
-            second_monster.health -= damage
-            # Trigger attack animation before showing damage
-            self.ui.play_attack_animation(self.player1_first, first_move)
-            print(f"{first_monster.name} used {first_move} for {damage:.1f} damage!")
-            
-            if second_monster.health <= 0:
-                self.reset_confirmations()
-                return first_monster
+        # Queue animations
+        self.animation_queue = [
+            (first_attacker, first_move),
+            (second_attacker, second_move)
+        ]
+        
+        self.animating = True
+        self.turn_number += 1
+        
+        return None  # Don't check winner until animations complete
 
-        # Second player's move
-        if second_move and second_monster.health > 0:
-            damage = self.calculate_damage(second_monster, first_monster, second_move)
-            first_monster.health -= damage
-            # Trigger attack animation before showing damage
-            self.ui.play_attack_animation(not self.player1_first, second_move)
-            print(f"{second_monster.name} used {second_move} for {damage:.1f} damage!")
+    def update_animations(self, dt):
+        """Update all animations"""
+        self.attack_animation.update(dt)
+        self.player1_flash.update(dt)
+        self.player2_flash.update(dt)
+        
+        # Process animation queue
+        if self.animating and not self.attack_animation.active and self.animation_queue:
+            attacker, move = self.animation_queue.pop(0)
+            self.execute_attack_with_animation(attacker, move)
             
-            if first_monster.health <= 0:
-                self.reset_confirmations()
-                return second_monster
-
-        # Alternate who goes first next turn and reset confirmations for the next turn
-        self.player1_first = not self.player1_first
-        self.reset_confirmations()
+        # Check if all animations finished
+        if (self.animating and not self.attack_animation.active and 
+            not self.animation_queue and not self.player1_flash.active and not self.player2_flash.active):
+            self.animating = False
+            # Check for winner after animations
+            return self.check_winner()
+            
         return None
 
-    def calculate_damage(self, attacker, defender, ability_name):
-        """Calculate damage based on ability and types"""
-        try:
-            # Debug prints to verify data
-            print(f"Attacker: {attacker.name}, Defender: {defender.name}")
-            print(f"Ability: {ability_name}")
-            print(f"Attacker stats: {MONSTER_DATA[attacker.name]}")
-            
-            # Get base damage
-            base_damage = ABILITIES_DATA[ability_name]['damage']
-            
-            # Get type effectiveness
-            type_multiplier = ELEMENT_DATA[attacker.element][defender.element]
-            
-            # Get attack and defense stats
-            attack_stat = MONSTER_DATA[attacker.name]['attack']
-            defense_stat = MONSTER_DATA[defender.name]['defense']
-            
-            # Calculate damage with stat modifier
-            stat_multiplier = attack_stat / defense_stat
-            final_damage = base_damage * type_multiplier * stat_multiplier
-            
-            print(f"Damage calculation: {base_damage} * {type_multiplier} * ({attack_stat}/{defense_stat})")
-            
-            return final_damage
+    def execute_attack_with_animation(self, attacker, move_name):
+        """Execute an attack with full animation"""
+        # Determine target
+        if attacker == self.player1_monster:
+            target = self.player2_monster
+            target_flash = self.player2_flash
+        else:
+            target = self.player1_monster
+            target_flash = self.player1_flash
 
-        except KeyError as e:
-            print(f"Error accessing stats: {e}")
-            print(f"Available monster data: {list(MONSTER_DATA.keys())}")
-            return 10
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            return 10
+        # Get move data
+        move_data = ABILITIES_DATA[move_name]
+        
+        # Start attack animation
+        self.attack_animation.start_animation(move_name, move_data)
+        
+        # Calculate and apply damage
+        damage = self.calculate_damage(attacker, target, move_data)
+        target.take_damage(damage)
+        
+        # Start damage flash on target
+        target_flash.start_flash()
+        
+        # Update UI health display
+        self.battle_ui.update_health_display(
+            self.player1_monster.health,
+            self.player2_monster.health
+        )
+        
+        print(f"{attacker.name} uses {move_name} on {target.name} for {damage} damage!")
+        print(f"{target.name} health: {target.health}/{target.max_health}")
+
+    def calculate_damage(self, attacker, target, move_data):
+        """Calculate damage with type effectiveness"""
+        base_damage = move_data['damage']
+        move_element = move_data['element']
+        
+        # Get type effectiveness
+        effectiveness = 1.0
+        if move_element in ELEMENT_DATA and target.element in ELEMENT_DATA[move_element]:
+            effectiveness = ELEMENT_DATA[move_element][target.element]
+        
+        # Get stats from monster data
+        attacker_data = MONSTER_DATA[attacker.name]
+        target_data = MONSTER_DATA[target.name]
+        
+        attack_stat = attacker_data['attack']
+        defense_stat = target_data['defense']
+        
+        # Calculate final damage with stats
+        damage = int(base_damage * effectiveness * (attack_stat / defense_stat))
+        damage = max(1, damage)  # Minimum 1 damage
+        
+        return damage
+
+    def check_winner(self):
+        """Check if there's a winner"""
+        if self.player1_monster.health <= 0:
+            return self.player2_monster
+        elif self.player2_monster.health <= 0:
+            return self.player1_monster
+        return None
+
+    def draw_animations(self, surface):
+        """Draw all active animations"""
+        self.attack_animation.draw(surface)
+        
+    def get_monster_flash_state(self, monster):
+        """Get flash state for a monster"""
+        if monster == self.player1_monster:
+            return self.player1_flash.should_flash()
+        else:
+            return self.player2_flash.should_flash()

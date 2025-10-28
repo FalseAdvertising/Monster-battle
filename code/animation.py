@@ -25,6 +25,9 @@ class Animation:
         self.hit_return_speed = 0.2
         self.max_hit_offset = 30
         
+        # Attack animation
+        self.attack_animation = AttackAnimation()
+    
     def load_attack_assets(self):
         """Load all attack images and sounds"""
         # Load attack images
@@ -108,3 +111,126 @@ class Animation:
         sprite = anim['sprite']
         sprite_rect = sprite.get_rect(center=(current_x, current_y))
         screen.blit(sprite, sprite_rect)
+
+    def update(self, dt):
+        """Update all animations"""
+        self.update_attack_animation(dt)
+        
+    def draw(self, screen):
+        """Draw all animations"""
+        self.draw_attack_animation(screen)
+        # Draw damage flash if active
+        if self.damage_flash.should_flash():
+            screen.fill((255, 0, 0), special_flags=pygame.BLEND_ADD)
+        
+class AttackAnimation:
+    def __init__(self):
+        self.active = False
+        self.attack_name = None
+        self.image = None
+        self.duration = 0
+        self.max_duration = 2000  # 2 seconds
+        self.alpha = 255
+        
+    def start_animation(self, attack_name, ability_data):
+        """Start an attack animation"""
+        self.active = True
+        self.attack_name = attack_name
+        self.duration = 0
+        self.alpha = 255
+        
+        # Use the animation field from ability data for image filename
+        animation_name = ability_data.get('animation', attack_name)
+        
+        # Load attack image
+        image_path = f'images/attacks/{animation_name}.png'
+        if os.path.exists(image_path):
+            self.image = pygame.image.load(image_path).convert_alpha()
+            # Scale image to be clearly visible
+            self.image = pygame.transform.smoothscale(self.image, (300, 300))
+        else:
+            print(f"Attack image not found: {image_path}")
+            self.image = None
+            
+        # Play attack sound - try both mp3 and wav
+        audio_paths = [
+            f'audio/{animation_name}.mp3',
+            f'audio/{animation_name}.wav',
+            f'audio/{attack_name}.mp3',
+            f'audio/{attack_name}.wav'
+        ]
+        
+        for audio_path in audio_paths:
+            if os.path.exists(audio_path):
+                try:
+                    sound = pygame.mixer.Sound(audio_path)
+                    sound.play()
+                    break
+                except Exception as e:
+                    print(f"Could not play sound {audio_path}: {e}")
+                    continue
+    
+    def update(self, dt):
+        """Update animation"""
+        if not self.active:
+            return
+            
+        self.duration += dt * 1000  # Convert to milliseconds
+        
+        # Fade out towards the end
+        if self.duration > self.max_duration * 0.7:
+            fade_progress = (self.duration - self.max_duration * 0.7) / (self.max_duration * 0.3)
+            self.alpha = int(255 * (1 - fade_progress))
+        
+        # End animation
+        if self.duration >= self.max_duration:
+            self.active = False
+            
+    def draw(self, surface):
+        """Draw the attack animation"""
+        if not self.active or not self.image:
+            return
+            
+        # Create a surface with alpha
+        temp_surface = self.image.copy()
+        temp_surface.set_alpha(self.alpha)
+        
+        # Center the image on screen
+        rect = temp_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2))
+        surface.blit(temp_surface, rect)
+
+class DamageFlash:
+    def __init__(self):
+        self.active = False
+        self.duration = 0
+        self.max_duration = 1000  # 1 second
+        self.flash_interval = 100  # Flash every 100ms
+        self.show_flash = False
+        
+    def start_flash(self):
+        """Start damage flash effect"""
+        self.active = True
+        self.duration = 0
+        self.show_flash = True
+        
+    def update(self, dt):
+        """Update flash effect"""
+        if not self.active:
+            return
+            
+        self.duration += dt * 1000  # Convert to milliseconds
+        
+        # Toggle flash every interval
+        if int(self.duration / self.flash_interval) % 2 == 0:
+            self.show_flash = True
+        else:
+            self.show_flash = False
+            
+        # End flash
+        if self.duration >= self.max_duration:
+            self.active = False
+            self.show_flash = False
+            
+    def should_flash(self):
+        """Returns True if should show red flash"""
+        return self.active and self.show_flash
