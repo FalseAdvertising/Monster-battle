@@ -73,14 +73,42 @@ class NetworkLauncher:
     def start_server(self):
         """Start the game server"""
         try:
+            import os
+            # Get the absolute path to the network_server.py file
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_server.py')
+            
             self.server_process = subprocess.Popen([
                 sys.executable, 
-                'network_server.py'
-            ], cwd='code')
-            self.server_running = True
-            return True
+                script_path
+            ], 
+            creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+            )
+            
+            # Wait a moment for server to start
+            import time
+            time.sleep(2)
+            
+            # Check if server actually started
+            if self.check_server_running('localhost', 12345):
+                self.server_running = True
+                return True
+            else:
+                print("Server failed to start properly")
+                return False
+                
         except Exception as e:
             print(f"Failed to start server: {e}")
+            return False
+            
+    def check_server_running(self, host, port):
+        """Check if server is running"""
+        try:
+            test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test_socket.settimeout(2)
+            result = test_socket.connect_ex((host, port))
+            test_socket.close()
+            return result == 0
+        except:
             return False
             
     def stop_server(self):
@@ -93,10 +121,14 @@ class NetworkLauncher:
     def start_client(self, server_ip='localhost'):
         """Start the game client"""
         try:
+            import os
+            # Get the absolute path to the network_game.py file
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_game.py')
+            
             subprocess.Popen([
                 sys.executable, 
-                'network_game.py'
-            ], cwd='code')
+                script_path
+            ])
             return True
         except Exception as e:
             print(f"Failed to start client: {e}")
@@ -105,10 +137,14 @@ class NetworkLauncher:
     def start_local_game(self):
         """Start local game"""
         try:
+            import os
+            # Get the absolute path to the main.py file
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.py')
+            
             subprocess.Popen([
                 sys.executable, 
-                'main.py'
-            ], cwd='code')
+                script_path
+            ])
             return True
         except Exception as e:
             print(f"Failed to start local game: {e}")

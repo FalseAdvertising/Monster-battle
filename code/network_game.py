@@ -1,9 +1,9 @@
 import pygame
 import sys
+import socket
 from settings import *
 from network_client import NetworkClient
 from selection_screen import SelectionScreen
-import socket
 
 class NetworkSelectionScreen:
     def __init__(self, client):
@@ -423,18 +423,71 @@ class NetworkGame:
             self.clock.tick(60)
 
 def get_server_ip():
-    """Get server IP from user"""
-    # Simple console input for server IP
-    print("=== Monster Battle Network ===")
-    print("Enter server IP address (press Enter for localhost):")
-    server_ip = input().strip()
+    """Get server IP from user with better prompts"""
+    print("=== Monster Battle Network Client ===")
+    print()
+    print("IMPORTANT: Make sure the server is running first!")
+    print("You can start the server by:")
+    print("1. Running 'python network_server.py' in another terminal")
+    print("2. Or using the Network Launcher and clicking 'Host Game'")
+    print()
+    print("Enter server IP address:")
+    print("- Press Enter for localhost (127.0.0.1)")
+    print("- Or enter the host's IP address (e.g., 192.168.1.100)")
+    print()
     
-    if not server_ip:
-        server_ip = 'localhost'
-        
-    return server_ip
+    while True:
+        try:
+            server_ip = input("Server IP: ").strip()
+            
+            if not server_ip:
+                server_ip = 'localhost'
+                
+            print(f"Will attempt to connect to: {server_ip}:12345")
+            confirm = input("Is this correct? (y/n): ").strip().lower()
+            
+            if confirm in ['y', 'yes', '']:
+                return server_ip
+            elif confirm in ['n', 'no']:
+                continue
+            else:
+                continue
+                
+        except KeyboardInterrupt:
+            print("\nCancelled by user")
+            return None
+
+def check_server_running(host, port):
+    """Check if server is running before connecting"""
+    try:
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_socket.settimeout(3)
+        result = test_socket.connect_ex((host, port))
+        test_socket.close()
+        return result == 0
+    except:
+        return False
 
 if __name__ == '__main__':
     server_ip = get_server_ip()
+    
+    if server_ip is None:
+        sys.exit(0)
+        
+    # Check if server is running before starting the game
+    print(f"\nChecking if server is running at {server_ip}:12345...")
+    
+    if not check_server_running(server_ip, 12345):
+        print(f"❌ No server found at {server_ip}:12345")
+        print("\nTo fix this:")
+        print("1. Make sure the server is running first")
+        print("2. Check the IP address is correct")
+        print("3. Make sure you're on the same network")
+        print("\nPress Enter to exit...")
+        input()
+        sys.exit(1)
+        
+    print(f"✅ Server found! Starting game...")
+    
     game = NetworkGame(server_ip)
     game.run()

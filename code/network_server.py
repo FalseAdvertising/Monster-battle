@@ -18,15 +18,39 @@ class GameServer:
         self.moves = {}  # {player_id: move_name}
         self.running = True
         
+        # Get and display local IP
+        self.local_ip = self.get_local_ip()
         print(f"Server starting on {host}:{port}")
+        print(f"Local IP address: {self.local_ip}")
+        print(f"Other devices can connect using: {self.local_ip}:{port}")
+        
+    def get_local_ip(self):
+        """Get the local IP address"""
+        try:
+            # Connect to a remote address to determine local IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            return local_ip
+        except:
+            return "127.0.0.1"
         
     def start(self):
         """Start the server"""
         try:
             self.socket.bind((self.host, self.port))
             self.socket.listen(2)  # Only allow 2 players
-            print(f"Server listening on {self.host}:{self.port}")
-            print("Waiting for players to connect...")
+            print("=" * 50)
+            print(f"🚀 Monster Battle Server Started!")
+            print(f"🌐 Listening on: {self.host}:{self.port}")
+            print(f"🏠 Local IP: {self.local_ip}:{self.port}")
+            print("=" * 50)
+            print("📱 For other devices to connect, use:")
+            print(f"   IP Address: {self.local_ip}")
+            print(f"   Port: {self.port}")
+            print("=" * 50)
+            print("⏳ Waiting for players to connect...")
             
             while self.running and len(self.players) < 2:
                 try:
@@ -44,7 +68,7 @@ class GameServer:
                         'special_used': False
                     }
                     
-                    print(f"Player {player_id} connected from {address}")
+                    print(f"🎮 Player {player_id} connected from {address[0]}:{address[1]}")
                     
                     # Start thread to handle this client
                     thread = threading.Thread(target=self.handle_client, args=(player_id,))
@@ -58,7 +82,7 @@ class GameServer:
                     })
                     
                     if len(self.players) == 2:
-                        print("Both players connected! Starting game...")
+                        print("🎯 Both players connected! Starting game...")
                         self.game_state = 'selection'
                         self.broadcast({
                             'type': 'game_start',
@@ -66,10 +90,10 @@ class GameServer:
                         })
                         
                 except Exception as e:
-                    print(f"Error accepting connection: {e}")
+                    print(f"❌ Error accepting connection: {e}")
                     
         except Exception as e:
-            print(f"Server error: {e}")
+            print(f"❌ Server error: {e}")
         finally:
             self.cleanup()
             

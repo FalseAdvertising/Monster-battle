@@ -27,8 +27,41 @@ class NetworkClient:
     def connect(self):
         """Connect to the game server"""
         try:
+            print(f"Attempting to connect to {self.host}:{self.port}...")
+            
+            # First, try to resolve the hostname
+            try:
+                resolved_ip = socket.gethostbyname(self.host)
+                print(f"Resolved {self.host} to {resolved_ip}")
+            except socket.gaierror as e:
+                print(f"DNS resolution failed for {self.host}: {e}")
+                print("This could mean:")
+                print("1. The hostname is incorrect")
+                print("2. DNS is not working properly")
+                print("3. Try using an IP address instead")
+                return False
+            
+            # Test connection first with a timeout
+            print(f"Testing connection to {resolved_ip}:{self.port}...")
+            test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test_socket.settimeout(5)
+            result = test_socket.connect_ex((resolved_ip, self.port))
+            test_socket.close()
+            
+            if result != 0:
+                print(f"Cannot reach server at {resolved_ip}:{self.port}")
+                print(f"Error code: {result}")
+                print("Make sure:")
+                print("1. The server is running")
+                print("2. You're on the same network")
+                print("3. Firewall isn't blocking the connection")
+                return False
+            
+            # Now make the actual connection
+            print(f"Connecting to {resolved_ip}:{self.port}...")
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.host, self.port))
+            self.socket.settimeout(10)  # 10 second timeout
+            self.socket.connect((resolved_ip, self.port))
             self.connected = True
             
             # Start listening thread
@@ -36,11 +69,24 @@ class NetworkClient:
             listen_thread.daemon = True
             listen_thread.start()
             
-            print(f"Connected to server at {self.host}:{self.port}")
+            print(f"Successfully connected to server at {resolved_ip}:{self.port}")
             return True
             
+        except socket.timeout:
+            print(f"Connection timed out. Server at {self.host}:{self.port} may not be responding.")
+            return False
+        except ConnectionRefusedError:
+            print(f"Connection refused. Server at {self.host}:{self.port} actively refused connection.")
+            print("The server may not be running or may be full.")
+            return False
+        except socket.gaierror as e:
+            print(f"Address resolution error: {e}")
+            print(f"Could not resolve hostname: {self.host}")
+            print("Try using an IP address instead of a hostname.")
+            return False
         except Exception as e:
             print(f"Failed to connect to server: {e}")
+            print(f"Error type: {type(e).__name__}")
             return False
             
     def listen_for_messages(self):
