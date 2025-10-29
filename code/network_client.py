@@ -24,6 +24,10 @@ class NetworkClient:
         self.message_queue = []
         self.queue_lock = threading.Lock()
         
+        # Heartbeat system
+        self.last_heartbeat = threading.Event()
+        self.heartbeat_thread = None
+        
     def connect(self):
         """Connect to the game server"""
         try:
@@ -69,6 +73,11 @@ class NetworkClient:
             listen_thread.daemon = True
             listen_thread.start()
             
+            # Start heartbeat thread
+            self.heartbeat_thread = threading.Thread(target=self.heartbeat_worker)
+            self.heartbeat_thread.daemon = True
+            self.heartbeat_thread.start()
+            
             print(f"Successfully connected to server at {resolved_ip}:{self.port}")
             return True
             
@@ -94,28 +103,56 @@ class NetworkClient:
         buffer = ""
         
         try:
+            # Remove timeout for continuous listening
+            self.socket.settimeout(None)
+            
             while self.connected:
-                data = self.socket.recv(1024).decode('utf-8')
-                if not data:
-                    break
+                try:
+                    data = self.socket.recv(1024).decode('utf-8')
+                    if not data:
+                        print("Server closed connection")
+                        break
+                        
+                    buffer += data
                     
-                buffer += data
-                
-                # Process complete messages (ending with newline)
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    if line.strip():
-                        try:
-                            message = json.loads(line)
-                            with self.queue_lock:
-                                self.message_queue.append(message)
-                        except json.JSONDecodeError:
-                            print(f"Invalid JSON received: {line}")
+                    # Process complete messages (ending with newline)
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            try:
+                                message = json.loads(line)
+                                with self.queue_lock:
+                                    self.message_queue.append(message)
+                            except json.JSONDecodeError:
+                                print(f"Invalid JSON received: {line}")
+                                
+                except socket.timeout:
+                    # This shouldn't happen since we removed timeout, but just in case
+                    continue
+                except ConnectionResetError:
+                    print("Connection was reset by server")
+                    break
+                except Exception as e:
+                    print(f"Error receiving data: {e}")
+                    break
                             
         except Exception as e:
             print(f"Connection lost: {e}")
         finally:
             self.connected = False
+            print("Disconnected from server")
+            
+    def heartbeat_worker(self):
+        """Send periodic heartbeat to server"""
+        import time
+        
+        while self.connected:
+            try:
+                time.sleep(30)  # Send heartbeat every 30 seconds
+                if self.connected:
+                    self.send_message({'type': 'ping'})
+            except:
+                break
             
     def process_messages(self):
         """Process messages from server (call from main thread)"""

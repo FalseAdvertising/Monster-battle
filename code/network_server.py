@@ -102,16 +102,40 @@ class GameServer:
         client_socket = self.players[player_id]['socket']
         
         try:
+            # Set socket options for better connection stability
+            client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            
             while self.running:
-                data = client_socket.recv(1024).decode('utf-8')
-                if not data:
-                    break
-                    
                 try:
-                    message = json.loads(data)
-                    self.process_message(player_id, message)
-                except json.JSONDecodeError:
-                    print(f"Invalid JSON from player {player_id}: {data}")
+                    # Use a reasonable timeout to detect disconnections
+                    client_socket.settimeout(60)  # 60 second timeout
+                    data = client_socket.recv(1024).decode('utf-8')
+                    
+                    if not data:
+                        print(f"Player {player_id} disconnected (no data)")
+                        break
+                        
+                    try:
+                        message = json.loads(data)
+                        self.process_message(player_id, message)
+                    except json.JSONDecodeError:
+                        print(f"Invalid JSON from player {player_id}: {data}")
+                        
+                except socket.timeout:
+                    # Check if client is still connected with a ping
+                    try:
+                        client_socket.send(b'{"type":"ping"}\n')
+                        print(f"Sent ping to player {player_id}")
+                    except:
+                        print(f"Player {player_id} timed out and is unreachable")
+                        break
+                        
+                except ConnectionResetError:
+                    print(f"Player {player_id} connection was reset")
+                    break
+                except ConnectionAbortedError:
+                    print(f"Player {player_id} connection was aborted")
+                    break
                     
         except Exception as e:
             print(f"Error handling player {player_id}: {e}")

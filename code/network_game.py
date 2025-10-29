@@ -298,46 +298,131 @@ class NetworkGame:
     def __init__(self, server_ip='localhost'):
         pygame.init()
         self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption('Monster Battle - Network')
+        pygame.display.set_caption('Monster Battle - Connecting...')
         self.clock = pygame.time.Clock()
         
         # Connect to server
         self.client = NetworkClient(server_ip)
-        if not self.client.connect():
-            print("Failed to connect to server!")
-            sys.exit(1)
-            
         self.running = True
         self.battle_ui = None
         
+        # Show connecting screen while attempting connection
+        self.show_connecting_screen()
+        
+        if not self.client.connect():
+            print("Failed to connect to server!")
+            self.show_connection_failed()
+            return
+            
+        print("Connected successfully! Starting game interface...")
+        
+    def show_connecting_screen(self):
+        """Show connecting screen"""
+        self.display_surface.fill((0, 0, 50))
+        font = pygame.font.Font(None, 48)
+        text = font.render("Connecting to server...", True, (255, 255, 255))
+        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        self.display_surface.blit(text, text_rect)
+        
+        small_font = pygame.font.Font(None, 24)
+        tip = small_font.render(f"Connecting to {self.client.host}:{self.client.port}", True, (200, 200, 200))
+        tip_rect = tip.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
+        self.display_surface.blit(tip, tip_rect)
+        
+        pygame.display.update()
+        
+    def show_connection_failed(self):
+        """Show connection failed screen"""
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or event.type == pygame.KEYDOWN:
+                    pygame.quit()
+                    return
+                    
+            self.display_surface.fill((50, 0, 0))
+            font = pygame.font.Font(None, 48)
+            text = font.render("Connection Failed", True, (255, 100, 100))
+            text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
+            self.display_surface.blit(text, text_rect)
+            
+            small_font = pygame.font.Font(None, 24)
+            tip = small_font.render("Press any key to exit", True, (200, 200, 200))
+            tip_rect = tip.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 20))
+            self.display_surface.blit(tip, tip_rect)
+            
+            error_text = small_font.render("Make sure the server is running!", True, (255, 200, 200))
+            error_rect = error_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
+            self.display_surface.blit(error_text, error_rect)
+            
+            pygame.display.update()
+            self.clock.tick(60)
+        
     def run(self):
         """Run the network game"""
+        # Check if connection was successful
+        if not self.client.connected:
+            pygame.quit()
+            return
+            
         print("Waiting for player assignment...")
+        pygame.display.set_caption('Monster Battle - Waiting for Assignment...')
         
-        # Wait for player ID
-        while self.running and self.client.player_id is None:
+        # Wait for player ID with visual feedback
+        while self.running and self.client.player_id is None and self.client.connected:
             self.client.process_messages()
-            pygame.time.wait(100)
+            
+            self.display_surface.fill((0, 0, 100))
+            font = pygame.font.Font(None, 48)
+            text = font.render("Waiting for player assignment...", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+            self.display_surface.blit(text, text_rect)
+            
+            # Show connection status
+            small_font = pygame.font.Font(None, 24)
+            status = "Connected to server" if self.client.connected else "Connection lost"
+            color = (0, 255, 0) if self.client.connected else (255, 0, 0)
+            status_text = small_font.render(status, True, color)
+            status_rect = status_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
+            self.display_surface.blit(status_text, status_rect)
+            
+            pygame.display.update()
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
                     
+            self.clock.tick(60)
+            
+        if not self.client.connected:
+            print("Lost connection to server")
+            pygame.quit()
+            return
+            
         if not self.running:
+            self.client.disconnect()
+            pygame.quit()
             return
             
         pygame.display.set_caption(f'Monster Battle - Player {self.client.player_id}')
         print(f"You are Player {self.client.player_id}")
         
-        # Wait for game start
-        while self.running and self.client.game_state == 'waiting':
+        # Wait for game start with visual feedback
+        while self.running and self.client.game_state == 'waiting' and self.client.connected:
             self.client.process_messages()
             
-            self.display_surface.fill((0, 0, 0))
+            self.display_surface.fill((0, 50, 0))
             font = pygame.font.Font(None, 48)
             text = font.render("Waiting for other player...", True, (255, 255, 255))
             text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
             self.display_surface.blit(text, text_rect)
+            
+            # Show player info
+            small_font = pygame.font.Font(None, 32)
+            player_text = f"You are Player {self.client.player_id}"
+            player_surface = small_font.render(player_text, True, (200, 255, 200))
+            player_rect = player_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
+            self.display_surface.blit(player_surface, player_rect)
+            
             pygame.display.update()
             
             for event in pygame.event.get():
