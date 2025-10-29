@@ -361,15 +361,25 @@ class NetworkGame:
         """Run the network game"""
         # Check if connection was successful
         if not self.client.connected:
+            print("Connection failed - exiting")
             pygame.quit()
             return
             
         print("Waiting for player assignment...")
         pygame.display.set_caption('Monster Battle - Waiting for Assignment...')
         
-        # Wait for player ID with visual feedback
+        # Wait for player ID with visual feedback and connection monitoring
+        assignment_timeout = 0
+        max_assignment_wait = 300  # 5 seconds at 60 FPS
+        
         while self.running and self.client.player_id is None and self.client.connected:
             self.client.process_messages()
+            
+            # Check for assignment timeout
+            assignment_timeout += 1
+            if assignment_timeout > max_assignment_wait:
+                print("Timeout waiting for player assignment")
+                break
             
             self.display_surface.fill((0, 0, 100))
             font = pygame.font.Font(None, 48)
@@ -385,6 +395,13 @@ class NetworkGame:
             status_rect = status_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
             self.display_surface.blit(status_text, status_rect)
             
+            # Show timeout countdown
+            remaining = (max_assignment_wait - assignment_timeout) // 60
+            if remaining > 0:
+                timeout_text = small_font.render(f"Timeout in: {remaining}s", True, (255, 255, 0))
+                timeout_rect = timeout_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 80))
+                self.display_surface.blit(timeout_text, timeout_rect)
+            
             pygame.display.update()
             
             for event in pygame.event.get():
@@ -395,7 +412,12 @@ class NetworkGame:
             
         if not self.client.connected:
             print("Lost connection to server")
-            pygame.quit()
+            self.show_error("Lost connection to server")
+            return
+            
+        if self.client.player_id is None:
+            print("Failed to get player assignment")
+            self.show_error("Server assignment timeout")
             return
             
         if not self.running:
@@ -404,11 +426,19 @@ class NetworkGame:
             return
             
         pygame.display.set_caption(f'Monster Battle - Player {self.client.player_id}')
-        print(f"You are Player {self.client.player_id}")
+        print(f"Successfully assigned as Player {self.client.player_id}")
         
         # Wait for game start with visual feedback
+        game_start_timeout = 0
+        max_game_wait = 1800  # 30 seconds at 60 FPS
+        
         while self.running and self.client.game_state == 'waiting' and self.client.connected:
             self.client.process_messages()
+            
+            game_start_timeout += 1
+            if game_start_timeout > max_game_wait:
+                print("Timeout waiting for game to start")
+                break
             
             self.display_surface.fill((0, 50, 0))
             font = pygame.font.Font(None, 48)
@@ -422,6 +452,13 @@ class NetworkGame:
             player_surface = small_font.render(player_text, True, (200, 255, 200))
             player_rect = player_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
             self.display_surface.blit(player_surface, player_rect)
+            
+            # Show connection status
+            status = "Connected" if self.client.connected else "Disconnected"
+            color = (0, 255, 0) if self.client.connected else (255, 0, 0)
+            status_text = small_font.render(f"Status: {status}", True, color)
+            status_rect = status_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 100))
+            self.display_surface.blit(status_text, status_rect)
             
             pygame.display.update()
             

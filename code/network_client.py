@@ -1,6 +1,7 @@
 import socket
 import threading
 import json
+import time
 import pygame
 from settings import *
 
@@ -64,9 +65,28 @@ class NetworkClient:
             # Now make the actual connection
             print(f"Connecting to {resolved_ip}:{self.port}...")
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            
+            # Set socket options for stability
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            
+            # Set initial timeout for connection
             self.socket.settimeout(10)  # 10 second timeout
             self.socket.connect((resolved_ip, self.port))
+            
+            # Connection successful, remove timeout for normal operation
+            self.socket.settimeout(None)
             self.connected = True
+            
+            # Send initial handshake message immediately
+            try:
+                handshake = {'type': 'player_join', 'timestamp': time.time()}
+                self.send_message(handshake)
+                print("Sent initial handshake to server")
+            except Exception as e:
+                print(f"Failed to send handshake: {e}")
+                self.disconnect()
+                return False
             
             # Start listening thread
             listen_thread = threading.Thread(target=self.listen_for_messages)
@@ -169,11 +189,12 @@ class NetworkClient:
         
         if msg_type == 'player_id':
             self.player_id = message.get('player_id')
-            print(f"Assigned as Player {self.player_id}")
+            status = message.get('status', 'assigned')
+            print(f"✅ Assigned as Player {self.player_id} (status: {status})")
             
         elif msg_type == 'game_start':
             self.game_state = 'selection'
-            print("Game starting! Select your monster.")
+            print("🎮 Game starting! Select your monster.")
             
         elif msg_type == 'battle_start':
             self.game_state = 'battle'

@@ -55,7 +55,24 @@ class GameServer:
             while self.running and len(self.players) < 2:
                 try:
                     client_socket, address = self.socket.accept()
-                    player_id = len(self.players) + 1
+                    
+                    # Assign player ID based on current players
+                    available_ids = [1, 2]
+                    for existing_id in self.players.keys():
+                        if existing_id in available_ids:
+                            available_ids.remove(existing_id)
+                    
+                    if not available_ids:
+                        print(f"⚠️ Connection from {address[0]}:{address[1]} rejected - server full")
+                        client_socket.close()
+                        continue
+                    
+                    player_id = available_ids[0]
+                    
+                    # Set socket options immediately
+                    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    client_socket.settimeout(None)  # Remove timeout for normal operation
+                    
                     self.players[player_id] = {
                         'socket': client_socket,
                         'address': address,
@@ -70,24 +87,31 @@ class GameServer:
                     
                     print(f"🎮 Player {player_id} connected from {address[0]}:{address[1]}")
                     
-                    # Start thread to handle this client
-                    thread = threading.Thread(target=self.handle_client, args=(player_id,))
-                    thread.daemon = True
-                    thread.start()
-                    
-                    # Send player ID to client
-                    self.send_to_player(player_id, {
+                    # Send player ID immediately
+                    welcome_msg = {
                         'type': 'player_id',
-                        'player_id': player_id
-                    })
+                        'player_id': player_id,
+                        'status': 'connected'
+                    }
                     
-                    if len(self.players) == 2:
-                        print("🎯 Both players connected! Starting game...")
-                        self.game_state = 'selection'
-                        self.broadcast({
-                            'type': 'game_start',
-                            'message': 'Both players connected! Select your monsters.'
-                        })
+                    if self.send_to_player(player_id, welcome_msg):
+                        print(f"✅ Sent welcome message to Player {player_id}")
+                        
+                        # Start thread to handle this client AFTER successful welcome
+                        thread = threading.Thread(target=self.handle_client, args=(player_id,))
+                        thread.daemon = True
+                        thread.start()
+                        
+                        if len(self.players) == 2:
+                            print("🎯 Both players connected! Starting game...")
+                            self.game_state = 'selection'
+                            self.broadcast({
+                                'type': 'game_start',
+                                'message': 'Both players connected! Select your monsters.'
+                            })
+                    else:
+                        print(f"❌ Failed to send welcome to Player {player_id}, disconnecting")
+                        self.disconnect_player(player_id)
                         
                 except Exception as e:
                     print(f"❌ Error accepting connection: {e}")
@@ -146,7 +170,19 @@ class GameServer:
         """Process incoming message from player"""
         msg_type = message.get('type')
         
-        if msg_type == 'monster_selection':
+        if msg_type == 'player_join':
+            # Client is confirming connection
+            print(f"✅ Player {player_id} confirmed connection with handshake")
+            
+        elif msg_type == 'ping':
+            # Respond to client ping
+            self.send_to_player(player_id, {'type': 'pong'})
+            
+        elif msg_type == 'pong':
+            # Client responded to our ping
+            print(f"Player {player_id} responded to ping")
+            
+        elif msg_type == 'monster_selection':
             monster_name = message.get('monster')
             if monster_name in MONSTER_DATA:
                 self.players[player_id]['monster'] = monster_name
@@ -356,16 +392,33 @@ class GameServer:
         
     def send_to_player(self, player_id, message):
         """Send message to specific player"""
+        if player_id not in self.players:
+            print(f"Cannot send to player {player_id}: player not found")
+            return False
+            
         try:
             data = json.dumps(message) + '\n'
             self.players[player_id]['socket'].send(data.encode('utf-8'))
+            return True
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            print(f"Player {player_id} connection lost while sending message")
+            self.disconnect_player(player_id)
+            return False
         except Exception as e:
             print(f"Error sending to player {player_id}: {e}")
+            return False
             
     def broadcast(self, message):
-        """Send message to all players"""
-        for player_id in self.players:
-            self.send_to_player(player_id, message)
+        """Send message to all connected players"""
+        disconnected_players = []
+        for player_id in list(self.players.keys()):
+            if not self.send_to_player(player_id, message):
+                disconnected_players.append(player_id)
+        
+        # Clean up disconnected players
+        for player_id in disconnected_players:
+            if player_id in self.players:
+                self.disconnect_player(player_id)
             
     def disconnect_player(self, player_id):
         """Handle player disconnection"""
