@@ -88,6 +88,11 @@ class BattleUI:
         self.player1_max_health = player1_monster.health
         self.player2_max_health = player2_monster.health
 
+        # Play Again button setup
+        self.play_again_button = None
+        self.exit_button = None
+        self.setup_end_game_buttons()
+
         # Font setup - use Creepster if available
         creepster_candidates = [
             os.path.normpath(os.path.join('background', 'Creepster-Regular.ttf')),
@@ -127,7 +132,11 @@ class BattleUI:
         self.mist = []
         
         # Setup the ability buttons last (after loading fonts and textures)
-        self.setup_ability_buttons(player1_monster.abilities, player2_monster.abilities)
+        self.setup_ability_buttons(player1_monster.get_available_abilities(), player2_monster.get_available_abilities())
+        
+        # Store monster references for dynamic updates
+        self.player1_monster_ref = player1_monster
+        self.player2_monster_ref = player2_monster
         
         # Monster animation properties
         self.bob_time = 0
@@ -181,6 +190,29 @@ class BattleUI:
             (WINDOW_WIDTH // 2, WINDOW_HEIGHT)
         ]
         
+    def setup_end_game_buttons(self):
+        """Setup Play Again and Exit buttons for end game screen"""
+        button_width = 200
+        button_height = 60
+        button_spacing = 40
+        
+        # Center the buttons horizontally and position them in lower portion of screen
+        total_width = (button_width * 2) + button_spacing
+        start_x = (WINDOW_WIDTH - total_width) // 2
+        button_y = WINDOW_HEIGHT // 2 + 120
+        
+        self.play_again_button = {
+            'rect': pygame.Rect(start_x, button_y, button_width, button_height),
+            'text': 'Play Again',
+            'hover': False
+        }
+        
+        self.exit_button = {
+            'rect': pygame.Rect(start_x + button_width + button_spacing, button_y, button_width, button_height),
+            'text': 'Back to Menu',
+            'hover': False
+        }
+
     def load_attack_effects(self):
         """Load all attack images and sounds"""
         # Load attack sprites
@@ -262,6 +294,18 @@ class BattleUI:
 
 
 
+    def refresh_ability_buttons(self):
+        """Refresh ability buttons to reflect used special moves"""
+        # Clear existing buttons
+        self.player1_buttons.clear()
+        self.player2_buttons.clear()
+        
+        # Recreate buttons with current available abilities
+        self.setup_ability_buttons(
+            self.player1_monster_ref.get_available_abilities(), 
+            self.player2_monster_ref.get_available_abilities()
+        )
+
     def setup_ability_buttons(self, player1_abilities, player2_abilities):
         # Calculate button dimensions for 2x2 grid with more space
         padding = 30  # Increased padding
@@ -275,12 +319,16 @@ class BattleUI:
             x = self.left_rect.left + padding + (col * (grid_width + padding))
             y = self.left_rect.top + padding + (row * (grid_height + padding))
             
+            # Check if this is a special move
+            is_special = ability in ABILITIES_DATA and ABILITIES_DATA[ability].get('type') == 'special'
+            
             self.player1_buttons.append({
                 'rect': pygame.Rect(x, y, grid_width, grid_height),
                 'ability': ability,
                 'color': self.colors['white'],
                 'hover': False,
-                'locked': False
+                'locked': False,
+                'is_special': is_special
             })
 
     # Setup player 2 buttons (right side)
@@ -290,13 +338,37 @@ class BattleUI:
             x = self.right_rect.left + padding + (col * (grid_width + padding))
             y = self.right_rect.top + padding + (row * (grid_height + padding))
             
+            # Check if this is a special move
+            is_special = ability in ABILITIES_DATA and ABILITIES_DATA[ability].get('type') == 'special'
+            
             self.player2_buttons.append({
                 'rect': pygame.Rect(x, y, grid_width, grid_height),
                 'ability': ability,
                 'color': self.colors['white'],
                 'hover': False,
-                'locked': False
+                'locked': False,
+                'is_special': is_special
             })
+
+    def handle_end_game_input(self, mouse_pos, mouse_click):
+        """Handle input for end game buttons"""
+        if not mouse_click:
+            return None
+            
+        # Check Play Again button
+        if self.play_again_button['rect'].collidepoint(mouse_pos):
+            return 'play_again'
+            
+        # Check Exit button
+        if self.exit_button['rect'].collidepoint(mouse_pos):
+            return 'exit'
+            
+        return None
+
+    def update_end_game_hover(self, mouse_pos):
+        """Update hover states for end game buttons"""
+        self.play_again_button['hover'] = self.play_again_button['rect'].collidepoint(mouse_pos)
+        self.exit_button['hover'] = self.exit_button['rect'].collidepoint(mouse_pos)
 
     def handle_input(self, mouse_pos, mouse_click):
         """Handle mouse input for move selection with deselection capability"""
@@ -455,15 +527,18 @@ class BattleUI:
                 surface.blit(btn_bg, rect.topleft)
             else:
                 pygame.draw.rect(surface, self.colors['white'], rect, border_radius=10)
-            # glow if hover/locked
+            # glow if hover/locked, special color for special moves
             if button['locked']:
                 pygame.draw.rect(surface, (255,120,20), rect, 4, border_radius=10)
             elif button['hover']:
                 pygame.draw.rect(surface, (180,0,255), rect, 3, border_radius=10)
+            elif button.get('is_special', False):
+                pygame.draw.rect(surface, (255,215,0), rect, 3, border_radius=10)  # Gold border for special moves
             # ability text
+            text_color = (255,255,100) if button.get('is_special', False) else (250,240,200)  # Golden text for special moves
             text_shadow = self.ability_font.render(button['ability'], True, (0,0,0))
             surface.blit(text_shadow, (rect.centerx - text_shadow.get_width()//2 + 1, rect.centery - text_shadow.get_height()//2 + 1))
-            text = self.ability_font.render(button['ability'], True, (250,240,200))
+            text = self.ability_font.render(button['ability'], True, text_color)
             surface.blit(text, (rect.centerx - text.get_width()//2, rect.centery - text.get_height()//2))
 
         # Draw player 2 buttons
@@ -478,9 +553,12 @@ class BattleUI:
                 pygame.draw.rect(surface, (255,120,20), rect, 4, border_radius=10)
             elif button['hover']:
                 pygame.draw.rect(surface, (180,0,255), rect, 3, border_radius=10)
+            elif button.get('is_special', False):
+                pygame.draw.rect(surface, (255,215,0), rect, 3, border_radius=10)  # Gold border for special moves
+            text_color = (255,255,100) if button.get('is_special', False) else (250,240,200)  # Golden text for special moves
             text_shadow = self.ability_font.render(button['ability'], True, (0,0,0))
             surface.blit(text_shadow, (rect.centerx - text_shadow.get_width()//2 + 1, rect.centery - text_shadow.get_height()//2 + 1))
-            text = self.ability_font.render(button['ability'], True, (250,240,200))
+            text = self.ability_font.render(button['ability'], True, text_color)
             surface.blit(text, (rect.centerx - text.get_width()//2, rect.centery - text.get_height()//2))
 
         # Draw health bars (themed pumpkin/blood style)
@@ -545,3 +623,60 @@ class BattleUI:
         hp2_text = self.hp_font.render(hp2_label, True, (255,255,255))
         surface.blit(hp1_text, (p1_x, p1_y + health_height + 4))
         surface.blit(hp2_text, (p2_x, p2_y + health_height + 4))
+        
+        # Draw status effect indicators
+        self.draw_status_effects(surface)
+
+    def draw_status_effects(self, surface):
+        """Draw status effect indicators for both players"""
+        # Status effect positions (under health bars)
+        p1_status_x = 50
+        p1_status_y = 100
+        p2_status_x = WINDOW_WIDTH - 250
+        p2_status_y = 100
+        
+        # Player 1 status effects
+        status_offset = 0
+        if hasattr(self.player1_monster_ref, 'shield_active') and self.player1_monster_ref.shield_active:
+            shield_text = self.hp_font.render("🛡️ SHIELD", True, (0, 255, 255))
+            surface.blit(shield_text, (p1_status_x, p1_status_y + status_offset))
+            status_offset += 25
+            
+        if hasattr(self.player1_monster_ref, 'burn_turns') and self.player1_monster_ref.burn_turns > 0:
+            burn_text = self.hp_font.render(f"🔥 BURN ({self.player1_monster_ref.burn_turns})", True, (255, 100, 0))
+            surface.blit(burn_text, (p1_status_x, p1_status_y + status_offset))
+            
+        # Player 2 status effects
+        status_offset = 0
+        if hasattr(self.player2_monster_ref, 'shield_active') and self.player2_monster_ref.shield_active:
+            shield_text = self.hp_font.render("🛡️ SHIELD", True, (0, 255, 255))
+            surface.blit(shield_text, (p2_status_x, p2_status_y + status_offset))
+            status_offset += 25
+            
+        if hasattr(self.player2_monster_ref, 'burn_turns') and self.player2_monster_ref.burn_turns > 0:
+            burn_text = self.hp_font.render(f"🔥 BURN ({self.player2_monster_ref.burn_turns})", True, (255, 100, 0))
+            surface.blit(burn_text, (p2_status_x, p2_status_y + status_offset))
+
+    def draw_end_game_buttons(self, surface):
+        """Draw Play Again and Exit buttons"""
+        for button in [self.play_again_button, self.exit_button]:
+            rect = button['rect']
+            
+            # Draw button background with wood texture if available
+            if self.wood_texture:
+                btn_bg = pygame.transform.smoothscale(self.wood_texture, (rect.width, rect.height))
+                surface.blit(btn_bg, rect.topleft)
+            else:
+                pygame.draw.rect(surface, self.colors['white'], rect, border_radius=10)
+            
+            # Draw button border with glow effect if hovered
+            border_color = (255, 120, 20) if button['hover'] else (100, 80, 60)
+            pygame.draw.rect(surface, border_color, rect, 4, border_radius=10)
+            
+            # Draw button text with shadow
+            text_shadow = self.ability_font.render(button['text'], True, (0, 0, 0))
+            surface.blit(text_shadow, (rect.centerx - text_shadow.get_width()//2 + 2, rect.centery - text_shadow.get_height()//2 + 2))
+            
+            text_color = (255, 255, 255) if button['hover'] else (250, 240, 200)
+            text = self.ability_font.render(button['text'], True, text_color)
+            surface.blit(text, (rect.centerx - text.get_width()//2, rect.centery - text.get_height()//2))

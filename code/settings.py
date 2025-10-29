@@ -17,26 +17,26 @@ COLORS = {
 
 MONSTER_DATA = {
     # Plant Monsters (High Health, High Defense, Low Attack)
-    'Larvea':    {'element': 'plant', 'health': 180, 'attack': 40, 'defense': 70},
-    'Pouch':     {'element': 'plant', 'health': 200, 'attack': 55, 'defense': 90},
-    'Plumette':  {'element': 'plant', 'health': 210, 'attack': 60, 'defense': 95},
-    'Cleaf':     {'element': 'plant', 'health': 210, 'attack': 65, 'defense': 90},
-    'Draem':     {'element': 'plant', 'health': 225, 'attack': 70, 'defense': 110},
-    'Ivieron':   {'element': 'plant', 'health': 245, 'attack': 75, 'defense': 120},
-    'Pluma':     {'element': 'plant', 'health': 260, 'attack': 80, 'defense': 130},
+    'Larvea':    {'element': 'plant', 'health': 450, 'attack': 40, 'defense': 70},
+    'Pouch':     {'element': 'plant', 'health': 500, 'attack': 55, 'defense': 90},
+    'Plumette':  {'element': 'plant', 'health': 525, 'attack': 60, 'defense': 95},
+    'Cleaf':     {'element': 'plant', 'health': 525, 'attack': 65, 'defense': 90},
+    'Draem':     {'element': 'plant', 'health': 560, 'attack': 70, 'defense': 110},
+    'Ivieron':   {'element': 'plant', 'health': 610, 'attack': 75, 'defense': 120},
+    'Pluma':     {'element': 'plant', 'health': 650, 'attack': 80, 'defense': 130},
 
     # Fire Monsters (Low Health, Strong Attack, Weak Defense)
-    'Atrox':     {'element': 'fire',  'health': 90,  'attack': 75, 'defense': 40},
-    'Jacana':    {'element': 'fire',  'health': 100, 'attack': 85, 'defense': 45},
-    'Sparchu':   {'element': 'fire',  'health': 110, 'attack': 90, 'defense': 50},
-    'Cindrill':  {'element': 'fire',  'health': 130, 'attack': 105, 'defense': 65},
-    'Charmadillo': {'element': 'fire',  'health': 145, 'attack': 120, 'defense': 70},
+    'Atrox':     {'element': 'fire',  'health': 225, 'attack': 75, 'defense': 40},
+    'Jacana':    {'element': 'fire',  'health': 250, 'attack': 85, 'defense': 45},
+    'Sparchu':   {'element': 'fire',  'health': 275, 'attack': 90, 'defense': 50},
+    'Cindrill':  {'element': 'fire',  'health': 325, 'attack': 105, 'defense': 65},
+    'Charmadillo': {'element': 'fire',  'health': 360, 'attack': 120, 'defense': 70},
 
     # Water Monsters (Average Health, Balanced Stats)
-    'Finsta':    {'element': 'water', 'health': 140, 'attack': 60, 'defense': 60},
-    'Friolera':  {'element': 'water', 'health': 155, 'attack': 70, 'defense': 70},
-    'Gulfin':    {'element': 'water', 'health': 165, 'attack': 75, 'defense': 75},
-    'Finiette':  {'element': 'water', 'health': 180, 'attack': 85, 'defense': 85},
+    'Finsta':    {'element': 'water', 'health': 350, 'attack': 60, 'defense': 60},
+    'Friolera':  {'element': 'water', 'health': 390, 'attack': 70, 'defense': 70},
+    'Gulfin':    {'element': 'water', 'health': 410, 'attack': 75, 'defense': 75},
+    'Finiette':  {'element': 'water', 'health': 450, 'attack': 85, 'defense': 85},
 }
 
 ABILITIES_DATA = {
@@ -46,7 +46,12 @@ ABILITIES_DATA = {
 	'splash':  {'damage': 30,  'element': 'water',  'animation': 'splash'},
 	'shards':  {'damage': 50,  'element': 'water',  'animation': 'ice'},
     'spiral':  {'damage': 40,  'element': 'plant',  'animation': 'green'},
-    'earthquake': {'damage': 55,  'element': 'plant',  'animation': 'green'}
+    'earthquake': {'damage': 55,  'element': 'plant',  'animation': 'green'},
+    
+    # Special Moves (one-time use only)
+    'reflect_shield': {'damage': 0,   'element': 'plant', 'animation': 'green', 'type': 'special'},
+    'healing_wave':   {'damage': -80, 'element': 'water', 'animation': 'splash', 'type': 'special'},
+    'burning_fury':   {'damage': 45,  'element': 'fire',  'animation': 'fire', 'type': 'special'}
 }
 
 ELEMENT_DATA = {

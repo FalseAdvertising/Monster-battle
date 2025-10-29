@@ -33,6 +33,14 @@ class BattleEngine:
         """Execute a turn with animations"""
         print(f"\n--- Turn {self.turn_number} ---")
         
+        # Apply burn damage at start of turn
+        if self.player1_monster.apply_burn():
+            print(f"{self.player1_monster.name} fainted from burn!")
+            return self.player2_monster
+        if self.player2_monster.apply_burn():
+            print(f"{self.player2_monster.name} fainted from burn!")
+            return self.player1_monster
+        
         # Determine turn order (alternates each turn)
         if self.turn_number % 2 == 1:  # Odd turns: Player 1 goes first
             first_attacker, first_move = self.player1_monster, player1_move
@@ -78,9 +86,11 @@ class BattleEngine:
         if attacker == self.player1_monster:
             target = self.player2_monster
             target_flash = self.player2_flash
+            attacker_flash = self.player1_flash
         else:
             target = self.player1_monster
             target_flash = self.player1_flash
+            attacker_flash = self.player2_flash
 
         # Get move data
         move_data = ABILITIES_DATA[move_name]
@@ -88,21 +98,65 @@ class BattleEngine:
         # Start attack animation
         self.attack_animation.start_animation(move_name, move_data)
         
-        # Calculate and apply damage
-        damage = self.calculate_damage(attacker, target, move_data)
-        target.take_damage(damage)
-        
-        # Start damage flash on target
-        target_flash.start_flash()
+        # Handle special moves
+        if move_data.get('type') == 'special':
+            self.execute_special_move(attacker, target, move_name, move_data, target_flash, attacker_flash)
+        else:
+            # Regular attack
+            damage = self.calculate_damage(attacker, target, move_data)
+            reflected_damage = target.take_damage(damage)
+            
+            # Handle shield reflection
+            if isinstance(reflected_damage, int) and reflected_damage > 0:
+                print(f"Damage reflected back to {attacker.name}!")
+                attacker.take_damage(reflected_damage)
+                attacker_flash.start_flash()
+            else:
+                target_flash.start_flash()
+            
+            print(f"{attacker.name} uses {move_name} on {target.name} for {damage} damage!")
+            print(f"{target.name} health: {target.health}/{target.max_health}")
         
         # Update UI health display
         self.battle_ui.update_health_display(
             self.player1_monster.health,
             self.player2_monster.health
         )
+
+    def execute_special_move(self, attacker, target, move_name, move_data, target_flash, attacker_flash):
+        """Execute special move effects"""
+        if not attacker.activate_special_move(move_name):
+            print(f"{attacker.name} has already used their special move!")
+            return
         
-        print(f"{attacker.name} uses {move_name} on {target.name} for {damage} damage!")
-        print(f"{target.name} health: {target.health}/{target.max_health}")
+        # Refresh UI buttons to remove used special move
+        self.battle_ui.refresh_ability_buttons()
+        
+        if move_name == 'reflect_shield':
+            attacker.shield_active = True
+            print(f"{attacker.name} activates Reflect Shield!")
+            
+        elif move_name == 'healing_wave':
+            heal_amount = abs(move_data['damage'])  # Convert negative damage to positive healing
+            attacker.heal(heal_amount)
+            print(f"{attacker.name} uses Healing Wave!")
+            
+        elif move_name == 'burning_fury':
+            # Deal damage + apply burn
+            damage = self.calculate_damage(attacker, target, move_data)
+            reflected_damage = target.take_damage(damage)
+            target.burn_turns = 2  # Apply burn for 2 turns
+            
+            # Handle shield reflection
+            if isinstance(reflected_damage, int) and reflected_damage > 0:
+                print(f"Damage reflected back to {attacker.name}!")
+                attacker.take_damage(reflected_damage)
+                attacker_flash.start_flash()
+            else:
+                target_flash.start_flash()
+                
+            print(f"{attacker.name} uses Burning Fury! {target.name} is burned for 2 turns!")
+            print(f"{target.name} health: {target.health}/{target.max_health}")
 
     def calculate_damage(self, attacker, target, move_data):
         """Calculate damage with type effectiveness"""

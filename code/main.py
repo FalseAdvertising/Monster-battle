@@ -114,7 +114,7 @@ class Game:
         self.battle_ended = False
         self.winner_name = None
 
-        # Game states: 'selecting', 'executing'
+        # Game states: 'selecting', 'executing', 'game_over'
         self.game_state = 'selecting'
 
         # Create monsters for loading screen
@@ -203,6 +203,22 @@ class Game:
             self.running = False
 
     def handle_input(self):
+        # Handle game over state input
+        if self.battle_ended:
+            mouse_pos = pygame.mouse.get_pos()
+            mouse_click = pygame.mouse.get_pressed()[0]
+            
+            # Update button hover states
+            self.battle_ui.update_end_game_hover(mouse_pos)
+            
+            # Handle button clicks
+            action = self.battle_ui.handle_end_game_input(mouse_pos, mouse_click)
+            if action == 'play_again':
+                self.restart_game()
+            elif action == 'exit':
+                self.return_to_menu()
+            return
+
         # Don't allow input if battle has ended or animating
         if self.battle_ended or self.battle_engine.animating:
             return
@@ -225,6 +241,112 @@ class Game:
             # Reset move selections for next turn
             self.battle_ui.reset_move_selections()
 
+    def restart_game(self):
+        """Restart the game by running selection screen again"""
+        # Stop any current music
+        pygame.mixer.music.stop()
+        
+        # Run selection screen again
+        selection = SelectionScreen()
+        result = selection.run()
+        
+        if result is None:  # Window was closed during selection
+            self.running = False
+            return
+            
+        player1_choice, player2_choice = result
+        print(f"Player 1 selected: {player1_choice}")
+        print(f"Player 2 selected: {player2_choice}")
+
+        # Reset game state
+        self.battle_ended = False
+        self.winner_name = None
+        self.game_state = 'selecting'
+
+        # Create new monsters
+        self.player1_monster = Monster(player1_choice, (200, 470), is_player=True)
+        self.player2_monster = Monster(player2_choice, (1000, 200), is_player=False)
+
+        # Run loading screen again
+        loading = LoadingScreen(self.player1_monster, self.player2_monster)
+        loading_result = None
+        while loading_result is None:
+            loading_result = loading.run(self.display_surface)
+            if loading_result is False:  # Quit
+                self.running = False
+                return
+
+        # Update sprite groups
+        self.monster_group.empty()
+        self.all_sprites.empty()
+        self.monster_group.add(self.player1_monster, self.player2_monster)
+        self.all_sprites.add(self.monster_group)
+
+        # Create new UI and battle engine
+        self.battle_ui = BattleUI(self.player1_monster, self.player2_monster)
+        self.battle_engine = BattleEngine(self.player1_monster, self.player2_monster, self.battle_ui)
+
+        # Position monsters again
+        try:
+            def scale_and_position(monster, mid_x, panel_top, max_height, offset_above_panel=8):
+                img = monster.back_sprite if monster.is_player else monster.front_sprite
+                orig_w, orig_h = img.get_width(), img.get_height()
+                available_height = panel_top - 20
+                max_sprite_height = max_height
+                scale_factor = 1.0
+                if orig_h > max_sprite_height:
+                    scale_factor = max_sprite_height / orig_h
+                scale_factor = min(scale_factor, 1.0)
+                new_w = int(orig_w * scale_factor)
+                new_h = int(orig_h * scale_factor)
+                if scale_factor < 1.0:
+                    scaled_img = pygame.transform.smoothscale(img, (new_w, new_h))
+                    monster.image = scaled_img
+                    monster.rect = monster.image.get_rect()
+                else:
+                    monster.image = img
+                    monster.rect = monster.image.get_rect()
+                monster.rect.midbottom = (mid_x, panel_top - offset_above_panel)
+                if monster.rect.top < 10:
+                    diff = 10 - monster.rect.top
+                    monster.rect.y += diff
+
+            left_mid = self.battle_ui.player1_floor_rect.centerx if getattr(self.battle_ui, 'player1_floor_rect', None) else 200
+            right_mid = self.battle_ui.player2_floor_rect.centerx if getattr(self.battle_ui, 'player2_floor_rect', None) else 1000
+            panel_top = self.battle_ui.left_rect.top
+            max_sprite_height = panel_top - 20
+            scale_and_position(self.player1_monster, left_mid, panel_top, max_sprite_height)
+            scale_and_position(self.player2_monster, right_mid, panel_top, max_sprite_height)
+        except Exception as e:
+            print(f"[Monster Positioning] Error: {e}")
+            self.player1_monster.rect.center = (200, 470)
+            self.player2_monster.rect.center = (1000, 200)
+
+    def return_to_menu(self):
+        """Return to the main menu"""
+        import subprocess
+        import sys
+        import os
+        
+        # Stop any current music
+        pygame.mixer.music.stop()
+        
+        # Launch menu.py and exit current game
+        menu_py = os.path.normpath(os.path.join(os.path.dirname(__file__), 'menu.py'))
+        if os.path.exists(menu_py):
+            try:
+                pygame.quit()
+                subprocess.Popen([sys.executable, menu_py])
+                sys.exit(0)
+            except Exception as e:
+                print(f"Failed to launch menu.py: {e}")
+                # Fallback to just closing the game
+                self.running = False
+        else:
+            print(f"menu.py not found at {menu_py}")
+            # Fallback to just closing the game
+            self.running = False
+
     def update(self):
         # Update all sprites
         self.all_sprites.update()
@@ -238,6 +360,7 @@ class Game:
         if winner and not self.battle_ended:
             self.battle_ended = True
             self.winner_name = winner.name
+            self.game_state = 'game_over'
             player_num = "1" if winner == self.player1_monster else "2"
             print(f"Battle ended! Player {player_num} wins!")
 
@@ -281,7 +404,7 @@ class Game:
 
 
     def draw_victory_message(self):
-        """Draw victory message in center of screen"""
+        """Draw victory message in center of screen with play again buttons"""
         # Create semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         overlay.set_alpha(180)
@@ -302,6 +425,9 @@ class Game:
         monster_text = font_small.render(f"{self.winner_name} is victorious!", True, (255, 215, 0))
         monster_rect = monster_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 30))
         self.display_surface.blit(monster_text, monster_rect)
+
+        # Draw play again and exit buttons
+        self.battle_ui.draw_end_game_buttons(self.display_surface)
 
     def run(self):
         while self.running:
